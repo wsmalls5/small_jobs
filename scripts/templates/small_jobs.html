@@ -150,9 +150,9 @@
       <div id="cust-type-view">
         <div class="row g-3">
           <div class="col-md-6" id="cust-panel-rental_advisor"></div>
-          <div class="col-md-6" id="cust-panel-hoa"></div>
-          <div class="col-md-6" id="cust-panel-multi_property"></div>
           <div class="col-md-6" id="cust-panel-individual"></div>
+          <div class="col-md-6" id="cust-panel-multi_property"></div>
+          <div class="col-md-6" id="cust-panel-hoa"></div>
         </div>
       </div>
 
@@ -467,6 +467,8 @@ const S = {
   singleJob:    false,
   hoursEntries: [],
   hoursPeriod:  '',
+  editPeriod:   null,
+  editId:       null,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -600,7 +602,7 @@ function renderCustomerTables(filter = '') {
   });
 
   // 4 type panels
-  ['rental_advisor','hoa','multi_property','individual'].forEach(type => {
+  ['rental_advisor','individual','multi_property','hoa'].forEach(type => {
     const panel = document.getElementById(`cust-panel-${type}`);
     if (!panel) return;
     const typeRows = rows.filter(c => (c.customer_type || 'individual') === type);
@@ -840,6 +842,9 @@ singleToggle.addEventListener('change', () => {
 });
 
 function showReceiptsTable() {
+  S.editPeriod = null;
+  S.editId     = null;
+  saveBtn.textContent = 'Save Receipt';
   document.getElementById('receipts-table-view').style.display = 'block';
   document.getElementById('upload-section').style.display      = 'none';
   reviewPanel.style.display = 'none';
@@ -848,6 +853,9 @@ function showReceiptsTable() {
 }
 
 function showReceiptsUpload() {
+  S.editPeriod = null;
+  S.editId     = null;
+  saveBtn.textContent = 'Save Receipt';
   document.getElementById('receipts-table-view').style.display = 'none';
   document.getElementById('upload-section').style.display      = 'block';
   reviewPanel.style.display = 'none';
@@ -872,7 +880,7 @@ async function loadReceiptsTable() {
     container.innerHTML = data.map(month => {
       const rows = (month.records || []).map(r => {
         const customers = [...new Set((r.items||[]).map(i => i.property_label||'').filter(Boolean))].join(', ');
-        return `<tr>
+        return `<tr style="cursor:pointer" data-period="${escHtml(month.period)}" data-id="${escHtml(r.id||'')}">
           <td style="white-space:nowrap" class="text-muted small">${escHtml(r.receipt_date||'')}</td>
           <td class="fw-semibold">${escHtml(r.vendor||'—')}</td>
           <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
@@ -882,9 +890,12 @@ async function loadReceiptsTable() {
       }).join('') || `<tr><td colspan="5" class="text-center text-muted py-3 small">No receipts</td></tr>`;
       return `
         <div class="mb-4">
-          <div class="receipt-month-header d-flex justify-content-between mb-2">
+          <div class="receipt-month-header d-flex justify-content-between align-items-start mb-2">
             <span>${escHtml(month.month)}</span>
-            <span class="text-primary">${month.count} receipt${month.count!==1?'s':''} &mdash; $${month.total.toFixed(2)}</span>
+            <div class="text-end">
+              <div class="text-primary">${month.count} receipt${month.count!==1?'s':''}</div>
+              <div class="text-muted small">Expenses Running Total: $${month.total.toFixed(2)}</div>
+            </div>
           </div>
           <div class="card border-0 shadow-sm">
             <div class="table-responsive">
@@ -901,6 +912,51 @@ async function loadReceiptsTable() {
   } catch(e) {
     container.innerHTML = '<p class="text-muted small">Could not load receipts.</p>';
   }
+}
+
+document.getElementById('receipts-month-tables').addEventListener('click', e => {
+  const row = e.target.closest('tr[data-id]');
+  if (!row || !row.dataset.id) return;
+  loadReceiptForEdit(row.dataset.period, row.dataset.id);
+});
+
+async function loadReceiptForEdit(period, id) {
+  const res = await fetch(`/receipts/${period}/${id}`);
+  const record = await res.json();
+  if (record.error) { showToast('Could not load receipt', 'danger'); return; }
+
+  S.editPeriod = period;
+  S.editId     = id;
+  S.filename   = record.receipt_file || '';
+  S.items      = (record.items || []).map(it => ({ ...it, amount: parseFloat(it.amount)||0 }));
+  S.singleJob  = record.single_job || false;
+  singleToggle.checked = S.singleJob;
+
+  vendorInput.value = record.vendor       || '';
+  dateInput.value   = record.receipt_date || '';
+  rawLines.textContent = '';
+  ocrNotice.style.display = 'none';
+
+  if (record.receipt_file) {
+    const ext = record.receipt_file.split('.').pop().toLowerCase();
+    const url = '/uploads/' + record.receipt_file;
+    if (ext === 'pdf') {
+      receiptImg.style.display = 'none';
+      receiptPdf.src = url;
+      receiptPdf.style.display = '';
+    } else {
+      receiptPdf.style.display = 'none';
+      receiptImg.src = url;
+      receiptImg.style.display = '';
+    }
+  } else {
+    receiptImg.style.display = 'none';
+    receiptPdf.style.display = 'none';
+  }
+
+  saveBtn.textContent = 'Update Receipt';
+  renderItems();
+  showReview();
 }
 
 async function handleFile(file) {
@@ -984,19 +1040,33 @@ saveBtn.addEventListener('click', async () => {
   saveBtn.disabled    = true;
   saveBtn.textContent = 'Saving…';
   try {
-    const res  = await fetch('/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    const data = await res.json();
-    if (data.ok) {
-      showToast(`Saved to ${data.file}`, 'success');
-      setTimeout(showReceiptsTable, 1200);
+    let res, data;
+    if (S.editPeriod && S.editId) {
+      res  = await fetch(`/receipts/${S.editPeriod}/${S.editId}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload),
+      });
+      data = await res.json();
+      if (data.ok) {
+        showToast('Receipt updated', 'success');
+        setTimeout(showReceiptsTable, 1200);
+      } else {
+        showToast('Update failed', 'danger');
+      }
     } else {
-      showToast('Save failed', 'danger');
+      res  = await fetch('/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      data = await res.json();
+      if (data.ok) {
+        showToast(`Saved to ${data.file}`, 'success');
+        setTimeout(showReceiptsTable, 1200);
+      } else {
+        showToast('Save failed', 'danger');
+      }
     }
   } catch (err) {
     showToast('Error: ' + err, 'danger');
   } finally {
     saveBtn.disabled    = false;
-    saveBtn.textContent = 'Save Receipt';
+    saveBtn.textContent = S.editPeriod ? 'Update Receipt' : 'Save Receipt';
   }
 });
 

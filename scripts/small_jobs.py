@@ -623,6 +623,51 @@ def api_expenses():
     return jsonify(out)
 
 
+@app.route("/receipts/<period>/<receipt_id>", methods=["GET"])
+def get_receipt(period, receipt_id):
+    fp = EXPENSES / f"expenses_{period}.json"
+    if not fp.exists():
+        return jsonify({"error": "not found"}), 404
+    records = json.loads(fp.read_text(encoding="utf-8"))
+    record  = next((r for r in records if r.get("id") == receipt_id), None)
+    if not record:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(record)
+
+
+@app.route("/receipts/<period>/<receipt_id>", methods=["PUT"])
+def update_receipt(period, receipt_id):
+    fp = EXPENSES / f"expenses_{period}.json"
+    if not fp.exists():
+        return jsonify({"error": "not found"}), 404
+    records = json.loads(fp.read_text(encoding="utf-8"))
+    idx     = next((i for i, r in enumerate(records) if r.get("id") == receipt_id), None)
+    if idx is None:
+        return jsonify({"error": "not found"}), 404
+
+    body = request.get_json()
+    with open(CUSTOMERS, encoding="utf-8") as f:
+        db = json.load(f)
+
+    items = body.get("items", [])
+    for item in items:
+        ck = item.get("customer_key", "")
+        item["property_label"] = db.get(ck, {}).get("property_label", "")
+
+    records[idx].update({
+        "receipt_date":  body.get("receipt_date",  records[idx].get("receipt_date", "")),
+        "vendor":        body.get("vendor",         records[idx].get("vendor", "")),
+        "single_job":    body.get("single_job",     records[idx].get("single_job", False)),
+        "items":         items,
+        "receipt_total": round(sum(i.get("amount", 0) for i in items), 2),
+    })
+
+    tmp = fp.with_suffix(".tmp")
+    tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(fp))
+    return jsonify({"ok": True})
+
+
 @app.route("/hours/<period>")
 def api_hours_period(period):
     fp = HOURS / f"hours_{period}.json"
