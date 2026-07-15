@@ -1,0 +1,27 @@
+# ── Sensitive data — never commit ────────────────────────────
+customers.json
+customers_export.csv
+data/
+example_data/
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ── OS / editor noise ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# ── Claude internal ───────────────────────────────────────────
+.claude/

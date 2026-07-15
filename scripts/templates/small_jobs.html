@@ -1,0 +1,1253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Small Jobs</title>
+<link href="/static/bootstrap.min.css" rel="stylesheet">
+<style>
+  body { background:#f5f6fa; font-size:.93rem; }
+  .navbar-brand { font-weight:700; letter-spacing:-.3px; }
+
+  /* ── Tab bar ── */
+  .tab-bar-wrap { background:#212529; border-bottom:1px solid #373b40; padding:0 1rem; }
+  .tab-bar-wrap .nav-tabs { border-bottom:none; }
+  .tab-bar-wrap .nav-tabs .nav-link {
+    color:#adb5bd; border:none; border-bottom:3px solid transparent;
+    border-radius:0; padding:.65rem 1.1rem; font-weight:500;
+    transition:color .15s, border-color .15s;
+  }
+  .tab-bar-wrap .nav-tabs .nav-link:hover { color:#fff; border-bottom-color:#495057; }
+  .tab-bar-wrap .nav-tabs .nav-link.active { color:#fff; border-bottom-color:#0d6efd; background:none; }
+
+  /* ── Upload / drop zone ── */
+  .drop-zone {
+    border:2.5px dashed #adb5bd; border-radius:14px;
+    padding:64px 32px; text-align:center; cursor:pointer;
+    transition:border-color .2s, background .2s; background:#fff;
+  }
+  .drop-zone.drag-over { border-color:#0d6efd; background:#eef3ff; }
+  .drop-zone .icon { font-size:2.8rem; margin-bottom:.5rem; }
+
+  /* ── Review panel ── */
+  #review-panel { display:none; }
+  #preview-col  { position:sticky; top:70px; }
+  #receipt-img  { max-width:100%; border-radius:10px; box-shadow:0 2px 12px rgba(0,0,0,.12); }
+  #receipt-pdf  { width:100%; height:600px; border-radius:10px; border:1px solid #dee2e6; }
+
+  /* ── Items table ── */
+  .items-tbl th { font-size:.8rem; text-transform:uppercase; letter-spacing:.5px;
+                  color:#6c757d; border-bottom:2px solid #dee2e6; white-space:nowrap; }
+  .items-tbl td { vertical-align:middle; }
+  .amt-input    { width:90px; text-align:right; }
+  .desc-input   { min-width:180px; }
+  .cust-select  { min-width:180px; max-width:260px; }
+  .remove-btn   { color:#dc3545; background:none; border:none; font-size:1.1rem;
+                  padding:0 6px; line-height:1; cursor:pointer; }
+  .remove-btn:hover { color:#a71d2a; }
+  tr.unassigned td { background:#fff8f0; }
+
+  /* ── Total bar ── */
+  .total-bar { background:#fff; border-top:2px solid #dee2e6; padding:.6rem 1rem;
+               border-radius:0 0 8px 8px; font-weight:600; }
+
+  /* ── Single-job banner ── */
+  #single-banner { display:none; background:#eef3ff; border:1.5px solid #b8d0fb;
+                   border-radius:8px; padding:.7rem 1rem; }
+
+  /* ── Toast ── */
+  #toast-wrap { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; }
+
+  /* ── Type badges ── */
+  .type-badge { font-size:.72rem; font-weight:600; padding:.2em .55em; border-radius:.3em; }
+  .type-rental_advisor { background:#dbeafe; color:#1e40af; }
+  .type-hoa            { background:#dcfce7; color:#166534; }
+  .type-multi_property { background:#fef9c3; color:#854d0e; }
+  .type-individual     { background:#f3f4f6; color:#374151; }
+  .type-personal       { background:#fce7f3; color:#9d174d; }
+
+  /* ── Customer tab ── */
+  .cust-table th { font-size:.8rem; text-transform:uppercase; letter-spacing:.5px;
+                   color:#6c757d; border-bottom:2px solid #dee2e6; }
+  .alias-row { display:flex; gap:.4rem; margin-bottom:.35rem; align-items:center; }
+  .alias-row input { flex:1; }
+
+  /* ── Customer type panels ── */
+  .type-panel-card { border:1px solid #e5e7eb !important; border-radius:10px !important; overflow:hidden; }
+  .type-panel-card .card-header { font-weight:600; font-size:.85rem; display:flex;
+                                   justify-content:space-between; align-items:center; }
+  .type-panel-scroll { max-height:380px; overflow-y:auto; }
+
+  /* ── Receipts table ── */
+  .receipt-month-header { font-size:.8rem; text-transform:uppercase; letter-spacing:.5px;
+                          color:#6c757d; font-weight:600; }
+  .receipts-tbl th { font-size:.8rem; text-transform:uppercase; letter-spacing:.5px;
+                     color:#6c757d; border-bottom:2px solid #dee2e6; white-space:nowrap; }
+  .receipts-tbl td { vertical-align:middle; }
+
+  /* ── Hours tab ── */
+  .hours-tbl th { font-size:.8rem; text-transform:uppercase; letter-spacing:.5px;
+                  color:#6c757d; border-bottom:2px solid #dee2e6; white-space:nowrap; }
+  .hours-tbl td { vertical-align:middle; }
+  .job-raw-label { font-size:.75rem; color:#6c757d; }
+  #hours-sticky-bar { background:#fff; border-top:2px solid #dee2e6; padding:.6rem 1rem;
+                      border-radius:0 0 8px 8px; font-weight:600; position:sticky; bottom:0; }
+
+  /* ── Hours month sub-tabs ── */
+  #hoursMonthTabs .nav-link { font-size:.85rem; padding:.4rem .9rem; }
+  .hours-job-header { font-size:.85rem; font-weight:600; color:#374151;
+                      padding:.4rem .75rem; background:#f8f9fa;
+                      border-radius:6px 6px 0 0; border:1px solid #dee2e6;
+                      border-bottom:none; display:flex; justify-content:space-between; }
+</style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark bg-dark px-3 sticky-top">
+  <span class="navbar-brand">Small Jobs</span>
+</nav>
+
+<!-- Tab bar -->
+<div class="tab-bar-wrap sticky-top" style="top:56px;z-index:1020;">
+  <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tab-customers-btn" data-bs-toggle="tab"
+              data-bs-target="#tab-customers" type="button" role="tab">Customers</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-receipts-btn" data-bs-toggle="tab"
+              data-bs-target="#tab-receipts" type="button" role="tab">Receipts</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-hours-btn" data-bs-toggle="tab"
+              data-bs-target="#tab-hours" type="button" role="tab">Hours</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-invoices-btn" data-bs-toggle="tab"
+              data-bs-target="#tab-invoices" type="button" role="tab">Invoices</button>
+    </li>
+  </ul>
+</div>
+
+<div class="tab-content">
+
+  <!-- ══════════════════════ TAB 1: CUSTOMERS ══════════════════════ -->
+  <div class="tab-pane fade show active" id="tab-customers" role="tabpanel">
+    <div class="container-fluid px-4 py-3">
+
+      <!-- Toolbar -->
+      <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+        <input type="text" id="cust-search" class="form-control form-control-sm"
+               style="max-width:240px" placeholder="Search customers…">
+        <div class="btn-group btn-group-sm ms-2" role="group">
+          <button type="button" class="btn btn-dark" id="view-by-type-btn">By Type</button>
+          <button type="button" class="btn btn-outline-secondary" id="view-all-btn">All</button>
+        </div>
+        <button class="btn btn-sm btn-primary ms-auto" id="add-cust-btn">+ Add Customer</button>
+      </div>
+
+      <!-- By-type view: 2×2 grid -->
+      <div id="cust-type-view">
+        <div class="row g-3">
+          <div class="col-md-6" id="cust-panel-rental_advisor"></div>
+          <div class="col-md-6" id="cust-panel-hoa"></div>
+          <div class="col-md-6" id="cust-panel-multi_property"></div>
+          <div class="col-md-6" id="cust-panel-individual"></div>
+        </div>
+      </div>
+
+      <!-- Full table view -->
+      <div id="cust-full-view" style="display:none">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover cust-table align-middle mb-0">
+            <thead>
+              <tr>
+                <th style="width:2rem">#</th>
+                <th>Property Label</th>
+                <th>Bill To</th>
+                <th>Rate</th>
+                <th>Type</th>
+                <th style="width:7rem"></th>
+              </tr>
+            </thead>
+            <tbody id="cust-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB 2: RECEIPTS ══════════════════════ -->
+  <div class="tab-pane fade" id="tab-receipts" role="tabpanel">
+    <div class="container-fluid px-4 py-3">
+
+      <!-- Receipt table (PRIMARY) -->
+      <div id="receipts-table-view">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Receipts</h6>
+          <button class="btn btn-sm btn-primary" id="add-receipt-btn">+ Add Receipt</button>
+        </div>
+        <div id="receipts-month-tables">
+          <span class="text-muted small">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Upload section -->
+      <div id="upload-section" style="display:none">
+        <div class="d-flex align-items-center mb-3 gap-2">
+          <button class="btn btn-sm btn-outline-secondary" id="receipts-back-btn">&#8592; Back</button>
+          <span class="fw-semibold">New Receipt</span>
+        </div>
+        <div class="row justify-content-center">
+          <div class="col-md-7 col-lg-5">
+            <div class="drop-zone" id="drop-zone"
+                 onclick="document.getElementById('file-input').click()">
+              <div class="icon">🧾</div>
+              <div class="fs-5 fw-semibold mb-1">Drop receipt here</div>
+              <div class="text-muted small">or click to browse &mdash; JPG, PNG, PDF</div>
+              <input type="file" id="file-input" style="display:none"
+                     accept=".jpg,.jpeg,.png,.pdf,.heic,.webp">
+            </div>
+            <div id="upload-status" class="text-center mt-3 text-muted small"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Review panel -->
+      <div id="review-panel">
+        <div class="d-flex align-items-center mb-3 gap-2">
+          <button class="btn btn-sm btn-outline-secondary" id="cancel-btn">&#8592; Back</button>
+          <span class="fw-semibold">Review Receipt</span>
+        </div>
+        <div class="row g-4">
+
+          <!-- Left: receipt preview -->
+          <div class="col-md-4" id="preview-col">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body p-2">
+                <img id="receipt-img" src="" alt="Receipt">
+                <embed id="receipt-pdf" src="" type="application/pdf" style="display:none">
+              </div>
+            </div>
+            <details class="mt-2">
+              <summary class="small text-muted" style="cursor:pointer">Raw OCR text</summary>
+              <pre id="raw-lines" class="mt-1 p-2 bg-light rounded small"
+                   style="max-height:220px;overflow-y:auto;white-space:pre-wrap"></pre>
+            </details>
+          </div>
+
+          <!-- Right: assignment form -->
+          <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body p-4">
+                <div class="row g-3 mb-3">
+                  <div class="col-sm-6">
+                    <label class="form-label fw-semibold">Vendor / Store</label>
+                    <input id="vendor-input" type="text" class="form-control" placeholder="e.g. Home Depot">
+                  </div>
+                  <div class="col-sm-4">
+                    <label class="form-label fw-semibold">Receipt Date</label>
+                    <input id="date-input" type="date" class="form-control">
+                  </div>
+                  <div class="col-sm-2 d-flex align-items-end">
+                    <div class="form-check form-switch pb-1">
+                      <input class="form-check-input" type="checkbox" id="single-job-toggle" role="switch">
+                      <label class="form-check-label small" for="single-job-toggle">Single job</label>
+                    </div>
+                  </div>
+                </div>
+                <div id="single-banner" class="mb-3">
+                  <div class="d-flex align-items-center gap-3">
+                    <span class="fw-semibold small">Assign all items to:</span>
+                    <select id="single-customer-select" class="form-select form-select-sm cust-select"></select>
+                  </div>
+                </div>
+                <div id="ocr-notice" class="alert alert-warning py-2 small mb-3" style="display:none">
+                  OCR could not detect items automatically — items added manually below.
+                </div>
+                <div class="table-responsive">
+                  <table id="items-table" class="table table-sm table-hover items-tbl align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th></th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th id="cust-col-header">Customer / Job</th>
+                      </tr>
+                    </thead>
+                    <tbody id="items-body"></tbody>
+                  </table>
+                </div>
+                <div class="total-bar d-flex justify-content-between align-items-center mt-1">
+                  <button class="btn btn-sm btn-outline-secondary" id="add-item-btn">+ Add row</button>
+                  <span>Total: <span id="total-display" class="text-primary">$0.00</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-3 justify-content-end">
+              <button class="btn btn-primary px-4" id="save-btn">Save Receipt</button>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /review-panel -->
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB 3: HOURS ══════════════════════ -->
+  <div class="tab-pane fade" id="tab-hours" role="tabpanel">
+    <div class="container-fluid px-4 py-3">
+
+      <!-- Main hours view (PRIMARY) -->
+      <div id="hours-main-view">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Work Hours</h6>
+          <button class="btn btn-sm btn-primary" id="import-hours-btn">+ Import CSV</button>
+        </div>
+        <ul class="nav nav-tabs mb-0" id="hoursMonthTabs" role="tablist"></ul>
+        <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="hoursMonthContent"></div>
+        <div id="hours-empty-msg" class="text-center text-muted py-5" style="display:none">
+          <div style="font-size:2.5rem">⏱</div>
+          <p class="mt-2">No hours recorded yet. Import a CSV to get started.</p>
+        </div>
+      </div>
+
+      <!-- Import section -->
+      <div id="hours-import-section" style="display:none">
+        <div class="d-flex align-items-center mb-3 gap-2">
+          <button class="btn btn-sm btn-outline-secondary" id="hours-import-back-btn">&#8592; Back</button>
+          <span class="fw-semibold">Import Hours CSV</span>
+        </div>
+        <div class="row justify-content-center">
+          <div class="col-md-7 col-lg-5">
+            <div class="drop-zone" id="hours-drop-zone"
+                 onclick="document.getElementById('hours-file-input').click()">
+              <div class="icon">⏱</div>
+              <div class="fs-5 fw-semibold mb-1">Drop Easy Hours CSV here</div>
+              <div class="text-muted small">or click to browse &mdash; CSV</div>
+              <input type="file" id="hours-file-input" style="display:none" accept=".csv">
+            </div>
+            <div id="hours-upload-status" class="text-center mt-3 text-muted small"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hours review section -->
+      <div id="hours-review" style="display:none">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+          <button class="btn btn-sm btn-outline-secondary" id="hours-back-btn">&#8592; Back</button>
+          <span id="hours-period-label" class="fw-semibold fs-6"></span>
+          <span id="hours-summary-label" class="text-muted small"></span>
+          <button class="btn btn-sm btn-primary ms-auto" id="hours-save-btn">Save Hours</button>
+        </div>
+        <div class="card border-0 shadow-sm">
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover hours-tbl align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Customer / Job</th>
+                    <th style="width:80px">Hours</th>
+                    <th>Memo</th>
+                  </tr>
+                </thead>
+                <tbody id="hours-tbody"></tbody>
+              </table>
+            </div>
+            <div id="hours-sticky-bar" class="d-flex justify-content-between">
+              <span>Total: <span id="hours-total-display" class="text-primary">0.0h</span></span>
+              <span id="hours-unassigned-display" class="text-warning"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB 4: INVOICES ══════════════════════ -->
+  <div class="tab-pane fade" id="tab-invoices" role="tabpanel">
+    <div class="container-fluid px-4 py-5 text-center">
+      <div style="font-size:3rem; margin-bottom:1rem">📄</div>
+      <h5 class="fw-semibold mb-2">Invoice Generator</h5>
+      <p class="text-muted">Coming soon — this will combine recorded hours and expenses<br>to generate monthly invoices per property.</p>
+    </div>
+  </div>
+
+</div><!-- /tab-content -->
+
+<!-- Toast -->
+<div id="toast-wrap">
+  <div id="toast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive">
+    <div class="d-flex">
+      <div class="toast-body" id="toast-body">Saved.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Customer modal -->
+<div class="modal fade" id="custModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="cust-modal-title">Add Customer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="cust-edit-key">
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold">Property Label <span class="text-danger">*</span></label>
+            <input type="text" id="cm-label" class="form-control" placeholder="e.g. 310 Targhee Towne">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold">Bill To Name</label>
+            <input type="text" id="cm-billto" class="form-control" placeholder="e.g. Rental Advisor">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Address</label>
+            <input type="text" id="cm-address" class="form-control">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold">Phone</label>
+            <input type="text" id="cm-phone" class="form-control">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label fw-semibold">Email</label>
+            <input type="email" id="cm-email" class="form-control">
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label fw-semibold">Hourly Rate</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input type="number" id="cm-rate" class="form-control" value="70" min="0" step="0.50">
+            </div>
+          </div>
+          <div class="col-sm-8">
+            <label class="form-label fw-semibold">Customer Type</label>
+            <select id="cm-type" class="form-select">
+              <option value="individual">Individual</option>
+              <option value="rental_advisor">Rental Advisor</option>
+              <option value="hoa">HOA</option>
+              <option value="multi_property">Multi-Property</option>
+              <option value="personal">Personal / Tools</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold">Aliases</label>
+            <div id="alias-list"></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-alias-btn">
+              + Add alias
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="cust-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/bootstrap.bundle.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════
+// 1. STATE
+// ═══════════════════════════════════════════════════════════════
+const S = {
+  customers:    [],
+  custsFull:    [],
+  filename:     '',
+  items:        [],
+  singleJob:    false,
+  hoursEntries: [],
+  hoursPeriod:  '',
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 2. DOM REFS
+// ═══════════════════════════════════════════════════════════════
+const dropZone      = document.getElementById('drop-zone');
+const fileInput     = document.getElementById('file-input');
+const reviewPanel   = document.getElementById('review-panel');
+const receiptImg    = document.getElementById('receipt-img');
+const receiptPdf    = document.getElementById('receipt-pdf');
+const vendorInput   = document.getElementById('vendor-input');
+const dateInput     = document.getElementById('date-input');
+const singleToggle  = document.getElementById('single-job-toggle');
+const singleBanner  = document.getElementById('single-banner');
+const singleSelect  = document.getElementById('single-customer-select');
+const itemsBody     = document.getElementById('items-body');
+const totalDisplay  = document.getElementById('total-display');
+const custColHeader = document.getElementById('cust-col-header');
+const addItemBtn    = document.getElementById('add-item-btn');
+const saveBtn       = document.getElementById('save-btn');
+const rawLines      = document.getElementById('raw-lines');
+const uploadStatus  = document.getElementById('upload-status');
+const ocrNotice     = document.getElementById('ocr-notice');
+
+// ═══════════════════════════════════════════════════════════════
+// 3. SHARED UTILITIES
+// ═══════════════════════════════════════════════════════════════
+const TYPE_LABELS = {
+  rental_advisor: 'Rental Advisor',
+  hoa:            'HOAs',
+  multi_property: 'Multi-Property',
+  individual:     'Individual Customers',
+  personal:       'Personal / Tools',
+};
+const TYPE_DISPLAY = {
+  rental_advisor: 'Rental Advisor',
+  hoa:            'HOA',
+  multi_property: 'Multi-Property',
+  individual:     'Individual',
+  personal:       'Personal / Tools',
+};
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.className = `toast align-items-center text-bg-${type} border-0`;
+  document.getElementById('toast-body').textContent = msg;
+  bootstrap.Toast.getOrCreateInstance(t, { delay: 3500 }).show();
+}
+
+function formatPeriodLabel(period) {
+  const m = period.match(/(\d{4})_(\d{2})/);
+  if (!m) return period;
+  const months = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  return `${months[parseInt(m[2])-1]} ${m[1]}`;
+}
+
+function buildCustomerSelect(selectEl, selectedKey = '') {
+  selectEl.innerHTML = '<option value="">— unassigned —</option>';
+  const groups = {};
+  S.customers.forEach(c => {
+    if (!groups[c.type]) groups[c.type] = [];
+    groups[c.type].push(c);
+  });
+  ['rental_advisor','hoa','multi_property','individual','personal'].forEach(type => {
+    if (!groups[type]) return;
+    const og = document.createElement('optgroup');
+    og.label = TYPE_LABELS[type] || type;
+    groups[type].forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.key;
+      opt.textContent = c.label;
+      if (c.key === selectedKey) opt.selected = true;
+      og.appendChild(opt);
+    });
+    selectEl.appendChild(og);
+  });
+}
+
+async function loadAllCustomers() {
+  const [r1, r2] = await Promise.all([fetch('/customers'), fetch('/customers/full')]);
+  S.customers = await r1.json();
+  S.custsFull = await r2.json();
+  buildCustomerSelect(singleSelect);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. CUSTOMER TAB
+// ═══════════════════════════════════════════════════════════════
+const custSearch    = document.getElementById('cust-search');
+const custTbody     = document.getElementById('cust-tbody');
+const addCustBtn    = document.getElementById('add-cust-btn');
+const custModal     = new bootstrap.Modal(document.getElementById('custModal'));
+const custSaveBtn   = document.getElementById('cust-save-btn');
+const addAliasBtn   = document.getElementById('add-alias-btn');
+const aliasList     = document.getElementById('alias-list');
+const viewByTypeBtn = document.getElementById('view-by-type-btn');
+const viewAllBtn    = document.getElementById('view-all-btn');
+const custTypeView  = document.getElementById('cust-type-view');
+const custFullView  = document.getElementById('cust-full-view');
+
+viewByTypeBtn.addEventListener('click', () => {
+  viewByTypeBtn.className = 'btn btn-dark';
+  viewAllBtn.className    = 'btn btn-outline-secondary';
+  custTypeView.style.display = 'block';
+  custFullView.style.display = 'none';
+});
+
+viewAllBtn.addEventListener('click', () => {
+  viewAllBtn.className    = 'btn btn-dark';
+  viewByTypeBtn.className = 'btn btn-outline-secondary';
+  custTypeView.style.display = 'none';
+  custFullView.style.display = 'block';
+});
+
+function renderCustomerTables(filter = '') {
+  const fl = filter.toLowerCase();
+  const rows = S.custsFull.filter(c => {
+    if ((c.customer_type || '') === 'personal') return false;
+    if (!fl) return true;
+    if ((c.property_label || '').toLowerCase().includes(fl)) return true;
+    if ((c.bill_to_name   || '').toLowerCase().includes(fl)) return true;
+    if ((c.aliases || []).some(a => a.toLowerCase().includes(fl))) return true;
+    return false;
+  });
+
+  // 4 type panels
+  ['rental_advisor','hoa','multi_property','individual'].forEach(type => {
+    const panel = document.getElementById(`cust-panel-${type}`);
+    if (!panel) return;
+    const typeRows = rows.filter(c => (c.customer_type || 'individual') === type);
+    const typeName = TYPE_DISPLAY[type] || type;
+    const tableRows = typeRows.map(c => `
+      <tr>
+        <td class="fw-semibold small">${escHtml(c.property_label || c.key)}</td>
+        <td class="text-muted small">${escHtml(c.bill_to_name || '')}</td>
+        <td class="text-muted small" style="white-space:nowrap">$${parseFloat(c.hourly_rate||70).toFixed(0)}/h</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2 me-1 edit-cust-btn"
+                  data-key="${escHtml(c.key)}">Edit</button>
+          <button class="btn btn-sm btn-outline-danger py-0 px-2 del-cust-btn"
+                  data-key="${escHtml(c.key)}"
+                  data-label="${escHtml(c.property_label||c.key)}">Del</button>
+        </td>
+      </tr>`).join('') ||
+      `<tr><td colspan="4" class="text-center text-muted py-3 small">No entries</td></tr>`;
+    panel.innerHTML = `
+      <div class="card type-panel-card">
+        <div class="card-header type-${type}">
+          <span>${typeName}</span>
+          <span class="fw-normal opacity-75">${typeRows.length}</span>
+        </div>
+        <div class="type-panel-scroll">
+          <table class="table table-sm table-hover cust-table align-middle mb-0">
+            <thead><tr>
+              <th>Property</th><th>Bill To</th><th>Rate</th>
+              <th style="width:90px"></th>
+            </tr></thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  });
+
+  // Full table
+  custTbody.innerHTML = rows.length
+    ? rows.map((c, i) => `
+        <tr>
+          <td class="text-muted">${i+1}</td>
+          <td class="fw-semibold">${escHtml(c.property_label || c.key)}</td>
+          <td class="text-muted">${escHtml(c.bill_to_name || '')}</td>
+          <td>$${parseFloat(c.hourly_rate||70).toFixed(0)}/h</td>
+          <td><span class="type-badge type-${c.customer_type||'individual'}">${escHtml(TYPE_DISPLAY[c.customer_type]||c.customer_type||'Individual')}</span></td>
+          <td>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2 me-1 edit-cust-btn"
+                    data-key="${escHtml(c.key)}">Edit</button>
+            <button class="btn btn-sm btn-outline-danger py-0 px-2 del-cust-btn"
+                    data-key="${escHtml(c.key)}"
+                    data-label="${escHtml(c.property_label||c.key)}">Del</button>
+          </td>
+        </tr>`).join('')
+    : `<tr><td colspan="6" class="text-center text-muted py-4">No customers found.</td></tr>`;
+}
+
+function loadCustomerTab() {
+  renderCustomerTables(custSearch.value);
+}
+
+custSearch.addEventListener('input', () => renderCustomerTables(custSearch.value));
+
+// Delegated handler covers both type-panel tables and full table
+document.getElementById('tab-customers').addEventListener('click', async e => {
+  const editBtn = e.target.closest('.edit-cust-btn');
+  const delBtn  = e.target.closest('.del-cust-btn');
+
+  if (editBtn) {
+    const key = editBtn.dataset.key;
+    const res = await fetch(`/customers/${encodeURIComponent(key)}`);
+    const c   = await res.json();
+    document.getElementById('cust-modal-title').textContent = 'Edit Customer';
+    document.getElementById('cust-edit-key').value  = key;
+    document.getElementById('cm-label').value        = c.property_label  || '';
+    document.getElementById('cm-billto').value       = c.bill_to_name    || '';
+    document.getElementById('cm-address').value      = c.address         || '';
+    document.getElementById('cm-phone').value        = c.phone           || '';
+    document.getElementById('cm-email').value        = c.email           || '';
+    document.getElementById('cm-rate').value         = c.hourly_rate     || 70;
+    document.getElementById('cm-type').value         = c.customer_type   || 'individual';
+    aliasList.innerHTML = '';
+    (c.aliases || []).forEach(a => addAliasRow(a));
+    custModal.show();
+  }
+
+  if (delBtn) {
+    const key   = delBtn.dataset.key;
+    const label = delBtn.dataset.label;
+    if (!confirm(`Delete "${label}"? This cannot be undone.`)) return;
+    const res = await fetch(`/customers/${encodeURIComponent(key)}`, { method:'DELETE' });
+    const d   = await res.json();
+    if (d.ok) {
+      showToast(`Deleted ${label}`, 'warning');
+      await loadAllCustomers();
+      loadCustomerTab();
+    } else {
+      showToast('Delete failed', 'danger');
+    }
+  }
+});
+
+addCustBtn.addEventListener('click', () => {
+  document.getElementById('cust-modal-title').textContent = 'Add Customer';
+  document.getElementById('cust-edit-key').value  = '';
+  document.getElementById('cm-label').value        = '';
+  document.getElementById('cm-billto').value       = '';
+  document.getElementById('cm-address').value      = '';
+  document.getElementById('cm-phone').value        = '';
+  document.getElementById('cm-email').value        = '';
+  document.getElementById('cm-rate').value         = '70';
+  document.getElementById('cm-type').value         = 'individual';
+  aliasList.innerHTML = '';
+  custModal.show();
+});
+
+function addAliasRow(value = '') {
+  const div = document.createElement('div');
+  div.className = 'alias-row';
+  div.innerHTML = `
+    <input type="text" class="form-control form-control-sm alias-input" value="${escHtml(value)}">
+    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 remove-alias-btn"
+            style="line-height:1.4">&times;</button>`;
+  div.querySelector('.remove-alias-btn').addEventListener('click', () => div.remove());
+  aliasList.appendChild(div);
+}
+
+addAliasBtn.addEventListener('click', () => addAliasRow());
+
+custSaveBtn.addEventListener('click', async () => {
+  const key   = document.getElementById('cust-edit-key').value.trim();
+  const label = document.getElementById('cm-label').value.trim();
+  if (!label) { showToast('Property label is required', 'danger'); return; }
+  const aliases = Array.from(aliasList.querySelectorAll('.alias-input'))
+    .map(i => i.value.trim()).filter(Boolean);
+  const body = {
+    property_label: label,
+    bill_to_name:   document.getElementById('cm-billto').value.trim(),
+    address:        document.getElementById('cm-address').value.trim(),
+    phone:          document.getElementById('cm-phone').value.trim(),
+    email:          document.getElementById('cm-email').value.trim(),
+    hourly_rate:    parseFloat(document.getElementById('cm-rate').value) || 70,
+    customer_type:  document.getElementById('cm-type').value,
+    aliases,
+  };
+  const url    = key ? `/customers/${encodeURIComponent(key)}` : '/customers';
+  const method = key ? 'PUT' : 'POST';
+  const res  = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  const d    = await res.json();
+  if (d.ok) {
+    custModal.hide();
+    showToast(key ? 'Customer updated' : 'Customer added', 'success');
+    await loadAllCustomers();
+    loadCustomerTab();
+  } else {
+    showToast(d.error || 'Save failed', 'danger');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 5. RECEIPT TAB
+// ═══════════════════════════════════════════════════════════════
+function renderItems() {
+  itemsBody.innerHTML = '';
+  S.items.forEach((item, i) => {
+    const unassigned = !item.customer_key && !S.singleJob;
+    const tr = document.createElement('tr');
+    if (unassigned) tr.classList.add('unassigned');
+    tr.innerHTML = `
+      <td><button class="remove-btn" data-i="${i}" title="Remove">&times;</button></td>
+      <td><input type="text" class="form-control form-control-sm desc-input"
+           value="${escHtml(item.description)}" data-i="${i}" data-field="description"></td>
+      <td><input type="number" class="form-control form-control-sm amt-input"
+           value="${item.amount.toFixed(2)}" min="0" step="0.01"
+           data-i="${i}" data-field="amount"></td>
+      <td class="cust-cell"><select class="form-select form-select-sm cust-select"
+           data-i="${i}" data-field="customer_key"></select></td>
+    `;
+    itemsBody.appendChild(tr);
+    const sel = tr.querySelector('.cust-select');
+    buildCustomerSelect(sel, item.customer_key);
+    if (S.singleJob) sel.closest('td').style.display = 'none';
+  });
+  updateTotal();
+  updateCustColVisibility();
+}
+
+function updateTotal() {
+  const tot = S.items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0);
+  totalDisplay.textContent = '$' + tot.toFixed(2);
+}
+
+function updateCustColVisibility() {
+  const hide = S.singleJob;
+  custColHeader.style.display = hide ? 'none' : '';
+  document.querySelectorAll('.cust-cell').forEach(td => td.style.display = hide ? 'none' : '');
+  singleBanner.style.display = hide ? 'block' : 'none';
+}
+
+itemsBody.addEventListener('input', e => {
+  const el = e.target;
+  if (!el.dataset.i) return;
+  const i = parseInt(el.dataset.i);
+  if (el.dataset.field === 'amount') {
+    S.items[i].amount = parseFloat(el.value) || 0;
+    updateTotal();
+  } else if (el.dataset.field === 'description') {
+    S.items[i].description = el.value;
+  } else if (el.dataset.field === 'customer_key') {
+    S.items[i].customer_key = el.value;
+    el.closest('tr').classList.toggle('unassigned', !el.value);
+  }
+});
+
+itemsBody.addEventListener('click', e => {
+  if (e.target.classList.contains('remove-btn')) {
+    S.items.splice(parseInt(e.target.dataset.i), 1);
+    renderItems();
+  }
+});
+
+addItemBtn.addEventListener('click', () => {
+  S.items.push({ description:'', amount:0, customer_key:'' });
+  renderItems();
+  const inputs = itemsBody.querySelectorAll('.desc-input');
+  if (inputs.length) inputs[inputs.length-1].focus();
+});
+
+singleToggle.addEventListener('change', () => {
+  S.singleJob = singleToggle.checked;
+  updateCustColVisibility();
+  document.querySelectorAll('#items-body tr').forEach(tr => {
+    const iEl = tr.querySelector('[data-i]');
+    if (!iEl) return;
+    const idx = parseInt(iEl.dataset.i);
+    tr.classList.toggle('unassigned', !S.singleJob && !S.items[idx]?.customer_key);
+  });
+});
+
+function showReceiptsTable() {
+  document.getElementById('receipts-table-view').style.display = 'block';
+  document.getElementById('upload-section').style.display      = 'none';
+  reviewPanel.style.display = 'none';
+  uploadStatus.textContent  = '';
+  loadReceiptsTable();
+}
+
+function showReceiptsUpload() {
+  document.getElementById('receipts-table-view').style.display = 'none';
+  document.getElementById('upload-section').style.display      = 'block';
+  reviewPanel.style.display = 'none';
+  uploadStatus.textContent  = '';
+}
+
+function showReview() {
+  document.getElementById('receipts-table-view').style.display = 'none';
+  document.getElementById('upload-section').style.display      = 'none';
+  reviewPanel.style.display = 'block';
+}
+
+async function loadReceiptsTable() {
+  const container = document.getElementById('receipts-month-tables');
+  try {
+    const res  = await fetch('/expenses');
+    const data = await res.json();
+    if (!data.length) {
+      container.innerHTML = '<p class="text-muted small py-3">No receipts saved yet.</p>';
+      return;
+    }
+    container.innerHTML = data.map(month => {
+      const rows = (month.records || []).map(r => {
+        const customers = [...new Set((r.items||[]).map(i => i.property_label||'').filter(Boolean))].join(', ');
+        return `<tr>
+          <td style="white-space:nowrap" class="text-muted small">${escHtml(r.receipt_date||'')}</td>
+          <td class="fw-semibold">${escHtml(r.vendor||'—')}</td>
+          <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
+          <td class="text-primary fw-semibold">$${(r.receipt_total||0).toFixed(2)}</td>
+          <td class="text-muted small">${escHtml(customers||'—')}</td>
+        </tr>`;
+      }).join('') || `<tr><td colspan="5" class="text-center text-muted py-3 small">No receipts</td></tr>`;
+      return `
+        <div class="mb-4">
+          <div class="receipt-month-header d-flex justify-content-between mb-2">
+            <span>${escHtml(month.month)}</span>
+            <span class="text-primary">${month.count} receipt${month.count!==1?'s':''} &mdash; $${month.total.toFixed(2)}</span>
+          </div>
+          <div class="card border-0 shadow-sm">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover receipts-tbl align-middle mb-0">
+                <thead><tr>
+                  <th>Date</th><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    container.innerHTML = '<p class="text-muted small">Could not load receipts.</p>';
+  }
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (!['jpg','jpeg','png','pdf','heic','webp'].includes(ext)) {
+    uploadStatus.textContent = 'Unsupported file type.';
+    return;
+  }
+  uploadStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading & running OCR…';
+  dropZone.classList.add('drag-over');
+  const fd = new FormData();
+  fd.append('file', file);
+  let data;
+  try {
+    const res = await fetch('/upload', { method:'POST', body:fd });
+    data = await res.json();
+  } catch (err) {
+    uploadStatus.textContent = 'Upload failed: ' + err;
+    dropZone.classList.remove('drag-over');
+    return;
+  }
+  dropZone.classList.remove('drag-over');
+  if (data.error) { uploadStatus.textContent = data.error; return; }
+
+  S.filename  = data.filename;
+  S.items     = data.items || [];
+  S.singleJob = false;
+  singleToggle.checked = false;
+
+  const url = '/uploads/' + data.filename;
+  if (ext === 'pdf') {
+    receiptImg.style.display = 'none';
+    receiptPdf.src = url;
+    receiptPdf.style.display = '';
+  } else {
+    receiptPdf.style.display = 'none';
+    receiptImg.src = url;
+    receiptImg.style.display = '';
+  }
+  vendorInput.value        = data.vendor || '';
+  dateInput.value          = data.date   || new Date().toISOString().slice(0,10);
+  rawLines.textContent     = (data.lines || []).join('\n');
+  ocrNotice.style.display  = (!data.ocr_ran || S.items.length === 0) ? '' : 'none';
+  if (S.items.length === 0) S.items.push({ description:'', amount:0, customer_key:'' });
+  renderItems();
+  showReview();
+}
+
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', ()  => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop',      e  => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change',   ()  => handleFile(fileInput.files[0]));
+
+document.getElementById('add-receipt-btn').addEventListener('click', showReceiptsUpload);
+document.getElementById('receipts-back-btn').addEventListener('click', showReceiptsTable);
+document.getElementById('cancel-btn').addEventListener('click', showReceiptsTable);
+
+saveBtn.addEventListener('click', async () => {
+  if (S.singleJob && !singleSelect.value) {
+    showToast('Select a customer for this single-job receipt.', 'danger');
+    singleSelect.focus();
+    return;
+  }
+  if (S.items.every(it => !(parseFloat(it.amount) > 0))) {
+    showToast('Add at least one item with an amount before saving.', 'danger');
+    return;
+  }
+  const items = S.items.map(it => ({
+    ...it,
+    customer_key: S.singleJob ? singleSelect.value : it.customer_key,
+    amount: parseFloat(it.amount) || 0,
+  }));
+  const payload = {
+    filename:     S.filename,
+    vendor:       vendorInput.value.trim(),
+    receipt_date: dateInput.value,
+    single_job:   S.singleJob,
+    items,
+  };
+  saveBtn.disabled    = true;
+  saveBtn.textContent = 'Saving…';
+  try {
+    const res  = await fetch('/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`Saved to ${data.file}`, 'success');
+      setTimeout(showReceiptsTable, 1200);
+    } else {
+      showToast('Save failed', 'danger');
+    }
+  } catch (err) {
+    showToast('Error: ' + err, 'danger');
+  } finally {
+    saveBtn.disabled    = false;
+    saveBtn.textContent = 'Save Receipt';
+  }
+});
+
+document.getElementById('tab-receipts-btn').addEventListener('show.bs.tab', showReceiptsTable);
+
+// ═══════════════════════════════════════════════════════════════
+// 6. HOURS TAB
+// ═══════════════════════════════════════════════════════════════
+const hoursDropZone     = document.getElementById('hours-drop-zone');
+const hoursFileInput    = document.getElementById('hours-file-input');
+const hoursUploadStatus = document.getElementById('hours-upload-status');
+const hoursTbody        = document.getElementById('hours-tbody');
+const hoursTotalDisplay = document.getElementById('hours-total-display');
+const hoursUnassigned   = document.getElementById('hours-unassigned-display');
+const hoursPeriodLabel  = document.getElementById('hours-period-label');
+const hoursSummaryLabel = document.getElementById('hours-summary-label');
+const hoursSaveBtn      = document.getElementById('hours-save-btn');
+
+function showHoursMainView() {
+  document.getElementById('hours-main-view').style.display      = 'block';
+  document.getElementById('hours-import-section').style.display = 'none';
+  document.getElementById('hours-review').style.display         = 'none';
+  hoursUploadStatus.textContent = '';
+  loadHoursMainView();
+}
+
+function showHoursImport() {
+  document.getElementById('hours-main-view').style.display      = 'none';
+  document.getElementById('hours-import-section').style.display = 'block';
+  document.getElementById('hours-review').style.display         = 'none';
+}
+
+function showHoursReview() {
+  document.getElementById('hours-main-view').style.display      = 'none';
+  document.getElementById('hours-import-section').style.display = 'none';
+  document.getElementById('hours-review').style.display         = 'block';
+}
+
+async function loadHoursMainView() {
+  const monthTabs    = document.getElementById('hoursMonthTabs');
+  const monthContent = document.getElementById('hoursMonthContent');
+  const emptyMsg     = document.getElementById('hours-empty-msg');
+  try {
+    const res  = await fetch('/hours');
+    const data = await res.json();
+    if (!data.length) {
+      monthTabs.innerHTML    = '';
+      monthContent.innerHTML = '';
+      emptyMsg.style.display = 'block';
+      return;
+    }
+    emptyMsg.style.display = 'none';
+    monthTabs.innerHTML = data.map((h, i) => `
+      <li class="nav-item" role="presentation">
+        <button class="nav-link${i===0?' active':''}"
+                data-bs-toggle="tab" data-bs-target="#hours-month-${h.period}"
+                type="button" role="tab" data-period="${h.period}">
+          ${formatPeriodLabel(h.period)}
+          <span class="badge bg-secondary ms-1" style="font-size:.65rem">${h.total_hours}h</span>
+        </button>
+      </li>`).join('');
+    monthContent.innerHTML = data.map((h, i) => `
+      <div class="tab-pane fade${i===0?' show active':''}" id="hours-month-${h.period}" role="tabpanel">
+        <div id="hours-month-detail-${h.period}">
+          <span class="text-muted small">Loading…</span>
+        </div>
+      </div>`).join('');
+    // Load first month immediately
+    if (data.length) await loadHoursMonthDetail(data[0].period);
+    // Lazy-load on tab click
+    monthTabs.querySelectorAll('button[data-period]').forEach(btn => {
+      btn.addEventListener('shown.bs.tab', () => loadHoursMonthDetail(btn.dataset.period));
+    });
+  } catch(e) {
+    monthTabs.innerHTML    = '';
+    monthContent.innerHTML = '<p class="text-muted small">Could not load hours.</p>';
+    emptyMsg.style.display = 'none';
+  }
+}
+
+async function loadHoursMonthDetail(period) {
+  const container = document.getElementById(`hours-month-detail-${period}`);
+  if (!container || container.dataset.loaded === '1') return;
+  try {
+    const res     = await fetch(`/hours/${period}`);
+    const data    = await res.json();
+    const entries = data.entries || [];
+    if (!entries.length) {
+      container.innerHTML = '<p class="text-muted small py-3">No entries for this period.</p>';
+      container.dataset.loaded = '1';
+      return;
+    }
+    // Group by property_label, fall back to job_raw
+    const jobs = {};
+    entries.forEach(e => {
+      const key = e.property_label || e.job_raw || 'Unassigned';
+      if (!jobs[key]) jobs[key] = { entries:[], total:0 };
+      jobs[key].entries.push(e);
+      jobs[key].total += parseFloat(e.hours) || 0;
+    });
+    const totalHours = entries.reduce((s, e) => s + (parseFloat(e.hours)||0), 0);
+    let html = `
+      <div class="d-flex justify-content-between align-items-center mb-3 pt-1">
+        <span class="text-muted small">${entries.length} entries</span>
+        <span class="fw-semibold text-primary">${totalHours.toFixed(2)}h total</span>
+      </div>`;
+    Object.entries(jobs).sort(([a],[b]) => a.localeCompare(b)).forEach(([jobName, job]) => {
+      const rows = job.entries.map(e => {
+        const timeStr = (e.in_time && e.out_time)
+          ? escHtml(e.in_time) + ' – ' + escHtml(e.out_time)
+          : escHtml(e.in_time || e.out_time || '');
+        return `<tr>
+          <td style="white-space:nowrap" class="text-muted small">${escHtml(e.date||'')}</td>
+          <td class="text-muted small">${timeStr}</td>
+          <td class="text-primary fw-semibold" style="white-space:nowrap">${(parseFloat(e.hours)||0).toFixed(2)}h</td>
+          <td class="text-muted small">${escHtml(e.memo||'')}</td>
+        </tr>`;
+      }).join('');
+      html += `
+        <div class="mb-3">
+          <div class="hours-job-header">
+            <span>${escHtml(jobName)}</span>
+            <span class="text-muted fw-normal">${job.total.toFixed(2)}h</span>
+          </div>
+          <div class="card border-0 shadow-sm"
+               style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover hours-tbl align-middle mb-0" style="border-radius:0">
+                <thead><tr>
+                  <th>Date</th><th>Time</th>
+                  <th style="width:70px">Hours</th><th>Memo</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    });
+    container.innerHTML = html;
+    container.dataset.loaded = '1';
+  } catch(e) {
+    container.innerHTML = '<p class="text-muted small">Could not load entries.</p>';
+  }
+}
+
+function renderHoursTable() {
+  const entries    = S.hoursEntries;
+  const totalHours = entries.reduce((s, e) => s + (parseFloat(e.hours)||0), 0);
+  const unmatched  = entries.filter(e => !e.customer_key).length;
+  hoursTotalDisplay.textContent = totalHours.toFixed(2) + 'h';
+  hoursUnassigned.textContent   = unmatched > 0 ? `${unmatched} unassigned` : '';
+  hoursTbody.innerHTML = '';
+  entries.forEach((entry, i) => {
+    const tr = document.createElement('tr');
+    if (!entry.customer_key) tr.classList.add('unassigned');
+    tr.innerHTML = `
+      <td style="white-space:nowrap">${escHtml(entry.date||'')}</td>
+      <td>
+        <select class="form-select form-select-sm cust-select hours-cust-sel" data-hi="${i}"></select>
+        <div class="job-raw-label mt-1">${escHtml(entry.job_raw||'')}</div>
+      </td>
+      <td>${(parseFloat(entry.hours)||0).toFixed(2)}h</td>
+      <td class="text-muted small">${escHtml(entry.memo||'')}</td>
+    `;
+    hoursTbody.appendChild(tr);
+    buildCustomerSelect(tr.querySelector('.hours-cust-sel'), entry.customer_key);
+  });
+}
+
+hoursTbody.addEventListener('change', e => {
+  const sel = e.target.closest('.hours-cust-sel');
+  if (!sel) return;
+  const i = parseInt(sel.dataset.hi);
+  S.hoursEntries[i].customer_key = sel.value;
+  sel.closest('tr').classList.toggle('unassigned', !sel.value);
+  const unmatched = S.hoursEntries.filter(e => !e.customer_key).length;
+  hoursUnassigned.textContent = unmatched > 0 ? `${unmatched} unassigned` : '';
+});
+
+async function handleHoursFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    hoursUploadStatus.textContent = 'Please upload a .csv file.';
+    return;
+  }
+  hoursUploadStatus.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Parsing CSV…';
+  hoursDropZone.classList.add('drag-over');
+  const fd = new FormData();
+  fd.append('file', file);
+  let data;
+  try {
+    const res = await fetch('/hours/upload', { method:'POST', body:fd });
+    data = await res.json();
+  } catch (err) {
+    hoursUploadStatus.textContent = 'Upload failed: ' + err;
+    hoursDropZone.classList.remove('drag-over');
+    return;
+  }
+  hoursDropZone.classList.remove('drag-over');
+  if (data.error) { hoursUploadStatus.textContent = data.error; return; }
+  S.hoursEntries = data.entries || [];
+  S.hoursPeriod  = data.period  || '';
+  hoursPeriodLabel.textContent  = 'Period: ' + formatPeriodLabel(S.hoursPeriod);
+  hoursSummaryLabel.textContent = `${data.entries.length} entries | ${data.total_hours}h total | ${data.matched} matched / ${data.unmatched} unmatched`;
+  renderHoursTable();
+  showHoursReview();
+}
+
+hoursDropZone.addEventListener('dragover',  e => { e.preventDefault(); hoursDropZone.classList.add('drag-over'); });
+hoursDropZone.addEventListener('dragleave', ()  => hoursDropZone.classList.remove('drag-over'));
+hoursDropZone.addEventListener('drop',      e  => { e.preventDefault(); hoursDropZone.classList.remove('drag-over'); handleHoursFile(e.dataTransfer.files[0]); });
+hoursFileInput.addEventListener('change',   ()  => handleHoursFile(hoursFileInput.files[0]));
+
+document.getElementById('import-hours-btn').addEventListener('click', showHoursImport);
+document.getElementById('hours-import-back-btn').addEventListener('click', showHoursMainView);
+document.getElementById('hours-back-btn').addEventListener('click', showHoursMainView);
+
+hoursSaveBtn.addEventListener('click', async () => {
+  if (!S.hoursEntries.length) { showToast('No entries to save.','danger'); return; }
+  hoursSaveBtn.disabled    = true;
+  hoursSaveBtn.textContent = 'Saving…';
+  try {
+    const payload = { period:S.hoursPeriod, entries:S.hoursEntries };
+    const res  = await fetch('/hours/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    const data = await res.json();
+    if (data.ok) {
+      const aliasMsg = data.aliases_added
+        ? ` — ${data.aliases_added} new alias${data.aliases_added!==1?'es':''} learned` : '';
+      showToast(`Saved to ${data.file}${aliasMsg}`, 'success');
+      setTimeout(showHoursMainView, 1800);
+    } else {
+      showToast('Save failed','danger');
+    }
+  } catch (err) {
+    showToast('Error: ' + err, 'danger');
+  } finally {
+    hoursSaveBtn.disabled    = false;
+    hoursSaveBtn.textContent = 'Save Hours';
+  }
+});
+
+document.getElementById('tab-hours-btn').addEventListener('show.bs.tab', showHoursMainView);
+
+// ═══════════════════════════════════════════════════════════════
+// 7. BOOT
+// ═══════════════════════════════════════════════════════════════
+loadAllCustomers().then(() => {
+  loadCustomerTab();
+  loadReceiptsTable();
+  loadHoursMainView();
+});
+</script>
+</body>
+</html>
