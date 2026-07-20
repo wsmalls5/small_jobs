@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Invoice {{ inv.invoice_id }}</title>
+<style>
+  /* ── Force background colors to print ── */
+  * { box-sizing: border-box; margin: 0; padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #000; background: #fff; }
+
+  /* Mint palette */
+  :root {
+    --mint:       #3a9078;   /* header bars, borders      */
+    --mint-light: #d8f0e9;   /* alternating rows, section */
+    --mint-dark:  #2b6e5a;   /* total row background      */
+  }
+
+  /* ── Screen controls ── */
+  .screen-bar {
+    background: var(--mint); color: #fff; padding: 10px 20px;
+    display: flex; gap: 12px; align-items: center;
+  }
+  .screen-bar button {
+    background: #fff; color: var(--mint-dark); border: none; border-radius: 4px;
+    padding: 6px 16px; font-size: 10pt; font-weight: 600; cursor: pointer;
+  }
+  .screen-bar button:hover { background: var(--mint-light); }
+  .screen-bar span { font-size: 10pt; opacity: .85; }
+
+  /* ── Page layout ── */
+  .invoice-page { max-width: 850px; margin: 24px auto; padding: 0 24px; }
+
+  /* ── Header ── */
+  .inv-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    border-bottom: 2.5px solid var(--mint); padding-bottom: 14px; margin-bottom: 0;
+  }
+  .inv-from { line-height: 1.7; }
+  .inv-from .from-name { font-size: 13pt; font-weight: 700; }
+  .inv-meta table { border-collapse: collapse; }
+  .inv-meta td { padding: 2px 6px; vertical-align: top; }
+  .inv-meta td:first-child { font-weight: 600; white-space: nowrap; color: #555; }
+  .inv-meta td:last-child  { font-weight: 500; }
+
+  /* ── Brand banner ── */
+  .brand-banner {
+    background: var(--mint); color: #fff;
+    font-size: 15pt; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+    padding: 10px 20px; margin-bottom: 18px;
+  }
+
+  /* ── Header divider ── */
+  .inv-divider {
+    width: 2.5px; background: var(--mint);
+    align-self: stretch; margin: 0 22px; flex-shrink: 0;
+  }
+
+  /* ── Tables ── */
+  table.inv-tbl { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  table.inv-tbl th {
+    background: var(--mint); color: #fff; font-size: 9.5pt;
+    padding: 6px 8px; text-align: left;
+  }
+  table.inv-tbl th.r, table.inv-tbl td.r { text-align: right; }
+  table.inv-tbl td {
+    padding: 5px 8px; border-bottom: 1px solid #d8ece6; vertical-align: top;
+    font-size: 9.5pt;
+  }
+  table.inv-tbl tr:nth-child(even) td { background: var(--mint-light); }
+  table.inv-tbl tr.subtotal-row td {
+    border-top: 2px solid var(--mint); font-weight: 600; background: #fff;
+    border-bottom: none;
+  }
+
+  /* ── Month heading ── */
+  .month-heading {
+    font-size: 11pt; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+    color: #222; padding: 14px 2px; border-bottom: 2.5px solid var(--mint);
+    margin-bottom: 0;
+  }
+
+  /* ── Section label ── */
+  .section-label {
+    background: var(--mint-light); font-weight: 700; font-size: 11pt;
+    padding: 5px 8px; margin-top: 20px; margin-bottom: 0;
+    border-left: 4px solid var(--mint);
+  }
+
+  /* ── Totals ── */
+  .totals-wrap { display: flex; justify-content: flex-end; margin-top: 8px; }
+  table.totals-tbl { border-collapse: collapse; min-width: 260px; }
+  table.totals-tbl td { padding: 4px 8px; font-size: 10pt; }
+  table.totals-tbl td:last-child { text-align: right; font-weight: 500; }
+  table.totals-tbl tr.total-row td {
+    font-weight: 700; font-size: 11.5pt;
+    background: var(--mint-dark); color: #fff;
+  }
+  table.totals-tbl tr.section-row td { border-top: 1px solid #c0ddd6; }
+
+  /* ── Footer ── */
+  .inv-footer {
+    margin-top: 28px; padding-top: 14px; border-top: 1px solid #c0ddd6;
+    font-size: 9.5pt; color: #444;
+  }
+  .thank-you { margin-top: 40px; text-align: center; font-weight: 700; font-size: 11pt; }
+  .correction-badge {
+    display: inline-block; background: #dc2626; color: #fff;
+    font-size: 8.5pt; font-weight: 700; padding: 1px 7px; border-radius: 3px;
+    margin-left: 8px; vertical-align: middle;
+  }
+  .version-note { font-size: 9pt; color: #666; margin-bottom: 6px; }
+
+  /* ── Print ── */
+  @media print {
+    .screen-bar { display: none; }
+    .invoice-page { max-width: 100%; margin: 0; padding: 0; }
+    body { font-size: 10pt; }
+    @page { margin: 0.7in 0.65in; }
+    /* Ensure colored backgrounds survive the print dialog */
+    .brand-banner,
+    .inv-divider,
+    table.inv-tbl th,
+    table.inv-tbl tr:nth-child(even) td,
+    table.inv-tbl tr.subtotal-row td,
+    .section-label,
+    table.totals-tbl tr.total-row td { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="screen-bar no-print">
+  <button onclick="doPrint()">&#128438; Print / Save PDF</button>
+  <button onclick="window.close()">&#10005; Close</button>
+  <span>Invoice {{ inv.invoice_id }}{% if inv.corrects %} &nbsp;|&nbsp; Corrects: {{ inv.corrects }}{% endif %}</span>
+</div>
+
+<script>
+function doPrint() {
+  {% if inv.corrects %}
+  const note = document.getElementById('correction-note');
+  const include = confirm(
+    'Include the CORRECTED notice on the printed invoice?\n\n' +
+    'OK = yes, show "Corrects {{ inv.corrects }}" at the top\n' +
+    'Cancel = print clean without the correction note'
+  );
+  if (note) note.style.display = include ? '' : 'none';
+  window.print();
+  if (note) note.style.display = '';   // always restore for screen view
+  {% else %}
+  window.print();
+  {% endif %}
+}
+</script>
+
+<div class="invoice-page">
+
+  {% if inv.corrects %}
+  <p class="version-note" id="correction-note">
+    Corrected invoice
+    <span class="correction-badge">CORRECTED</span>
+    &mdash; supersedes {{ inv.corrects }}
+  </p>
+  {% endif %}
+
+  <!-- Brand banner -->
+  <div class="brand-banner">Small Jobs</div>
+
+  <!-- Header -->
+  <div class="inv-header">
+    <div class="inv-from">
+      <div class="from-name">Tom Smallwood</div>
+      <div>4868 Morningstar Lane</div>
+      <div>Tetonia, ID &nbsp;83452</div>
+      <div>303-829-2016</div>
+    </div>
+    <div class="inv-divider"></div>
+    <div class="inv-meta">
+      <table>
+        <tr><td>Invoice No.</td><td>{{ inv.invoice_id }}</td></tr>
+        <tr><td>Invoice Date:</td><td>{{ inv.invoice_date }}</td></tr>
+        <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+        <tr><td>Bill To:</td><td>{{ inv.bill_to_name }}</td></tr>
+        {% if inv.property_label %}
+        <tr><td>Property:</td><td>{{ inv.property_label }}</td></tr>
+        {% endif %}
+        {% if inv.bill_to_address %}
+        <tr><td>Address:</td><td>{{ inv.bill_to_address }}</td></tr>
+        {% endif %}
+        {% if inv.bill_to_phone %}
+        <tr><td>Phone:</td><td>{{ inv.bill_to_phone }}</td></tr>
+        {% endif %}
+        {% if inv.bill_to_email %}
+        <tr><td>E-mail:</td><td>{{ inv.bill_to_email }}</td></tr>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+
+  <!-- Month / service heading -->
+  <div class="month-heading">{{ inv.month_label }} &ndash; Handyman Services</div>
+
+  <!-- Labor table -->
+  <div class="section-label">Labor</div>
+  <table class="inv-tbl">
+    <thead>
+      <tr>
+        <th style="width:100px">Date</th>
+        <th>Description</th>
+        <th class="r" style="width:60px">Hours</th>
+        <th class="r" style="width:100px">Rate / Hour</th>
+        <th class="r" style="width:90px">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in inv.labor_entries %}
+      <tr>
+        <td>{{ e.date }}</td>
+        <td>{{ e.description or '' }}</td>
+        <td class="r">{{ '%.2f'|format(e.hours) }}</td>
+        <td class="r">${{ '%.2f'|format(e.rate) }}</td>
+        <td class="r">${{ '%.2f'|format(e.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="subtotal-row">
+        <td colspan="4" style="text-align:right">Labor Subtotal</td>
+        <td class="r">${{ '%.2f'|format(inv.labor_subtotal) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <!-- Materials (only when present) -->
+  {% if inv.material_entries %}
+  <div class="section-label">Materials</div>
+  <table class="inv-tbl">
+    <thead>
+      <tr>
+        <th style="width:100px">Date</th>
+        <th style="width:160px">Vendor</th>
+        <th>Description</th>
+        <th class="r" style="width:90px">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in inv.material_entries %}
+      <tr>
+        <td>{{ m.date }}</td>
+        <td>{{ m.vendor }}</td>
+        <td>{{ m.description }}</td>
+        <td class="r">${{ '%.2f'|format(m.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="subtotal-row">
+        <td colspan="3" style="text-align:right">Materials Subtotal</td>
+        <td class="r">${{ '%.2f'|format(inv.materials_subtotal) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  {% endif %}
+
+  <!-- Totals -->
+  <div class="totals-wrap">
+    <table class="totals-tbl">
+      <tr class="section-row">
+        <td>Invoice Subtotal</td>
+        <td>${{ '%.2f'|format(inv.invoice_subtotal) }}</td>
+      </tr>
+      <tr>
+        <td>Tax Rate</td>
+        <td>{{ '%.2f'|format(inv.tax_rate * 100) }}%</td>
+      </tr>
+      <tr>
+        <td>Sales Tax</td>
+        <td>${{ '%.2f'|format(inv.tax_amount) }}</td>
+      </tr>
+      {% if inv.other %}
+      <tr>
+        <td>Other</td>
+        <td>${{ '%.2f'|format(inv.other) }}</td>
+      </tr>
+      {% endif %}
+      {% if inv.deposit %}
+      <tr>
+        <td>Deposit Received</td>
+        <td>-${{ '%.2f'|format(inv.deposit) }}</td>
+      </tr>
+      {% endif %}
+      <tr class="total-row">
+        <td>TOTAL</td>
+        <td>${{ '%.2f'|format(inv.total) }}</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div class="inv-footer">
+    Make all checks payable to <strong>Tom Smallwood</strong>
+  </div>
+
+  <div class="thank-you">Thank you for your business!</div>
+
+</div>
+</body>
+</html>
