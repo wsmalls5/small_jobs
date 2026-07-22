@@ -5,6 +5,7 @@ example_data/
 
 # Data folder — keep directory structure, ignore all file content
 data/**
+!data/**/
 !data/**/.gitkeep
 
 # ── Python ────────────────────────────────────────────────────
