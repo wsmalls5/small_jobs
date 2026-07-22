@@ -12,9 +12,9 @@
 
   /* Mint palette */
   :root {
-    --mint:       #3a9078;   /* header bars, borders      */
-    --mint-light: #d8f0e9;   /* alternating rows, section */
-    --mint-dark:  #2b6e5a;   /* total row background      */
+    --mint:       #3a9078;
+    --mint-light: #d8f0e9;
+    --mint-dark:  #2b6e5a;
   }
 
   /* ── Screen controls ── */
@@ -34,27 +34,32 @@
 
   /* ── Header ── */
   .inv-header {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    border-bottom: 2.5px solid var(--mint); padding-bottom: 14px; margin-bottom: 0;
+    display: flex; align-items: stretch;
+    border-bottom: 2.5px solid var(--mint); margin-bottom: 0;
   }
-  .inv-from { line-height: 1.7; }
+  /* Customer block — LEFT, proportionally wider */
+  .inv-customer { flex: 2; line-height: 1.7; min-width: 0; padding-bottom: 14px; }
+  .inv-customer .cust-name { font-size: 13pt; font-weight: 700; }
+  .inv-customer .cust-meta { margin-top: 8px; }
+  .inv-customer .cust-meta table { border-collapse: collapse; }
+  .inv-customer .cust-meta td { padding: 1px 6px 1px 0; vertical-align: top; font-size: 9.5pt; }
+  .inv-customer .cust-meta td:first-child { font-weight: 600; white-space: nowrap; color: #555; padding-right: 10px; }
+
+  /* Divider — sits right up against the customer block */
+  .inv-divider {
+    width: 2.5px; background: var(--mint);
+    align-self: stretch; margin: 0 18px 0 8px; flex-shrink: 0;
+  }
+
+  /* Provider block — RIGHT, compact */
+  .inv-from { flex: 1; line-height: 1.7; padding-bottom: 14px; }
   .inv-from .from-name { font-size: 13pt; font-weight: 700; }
-  .inv-meta table { border-collapse: collapse; }
-  .inv-meta td { padding: 2px 6px; vertical-align: top; }
-  .inv-meta td:first-child { font-weight: 600; white-space: nowrap; color: #555; }
-  .inv-meta td:last-child  { font-weight: 500; }
 
   /* ── Brand banner ── */
   .brand-banner {
     background: var(--mint); color: #fff;
     font-size: 15pt; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
     padding: 10px 20px; margin-bottom: 18px;
-  }
-
-  /* ── Header divider ── */
-  .inv-divider {
-    width: 2.5px; background: var(--mint);
-    align-self: stretch; margin: 0 22px; flex-shrink: 0;
   }
 
   /* ── Tables ── */
@@ -77,7 +82,8 @@
   /* ── Month heading ── */
   .month-heading {
     font-size: 11pt; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
-    color: #222; padding: 14px 2px; border-bottom: 2.5px solid var(--mint);
+    color: #222; padding: 14px 2px;
+    border-top: 2.5px solid var(--mint); border-bottom: 2.5px solid var(--mint);
     margin-bottom: 0;
   }
 
@@ -118,7 +124,6 @@
     .invoice-page { max-width: 100%; margin: 0; padding: 0; }
     body { font-size: 10pt; }
     @page { margin: 0.7in 0.65in; }
-    /* Ensure colored backgrounds survive the print dialog */
     .brand-banner,
     .inv-divider,
     table.inv-tbl th,
@@ -132,12 +137,35 @@
 <body>
 
 <div class="screen-bar no-print">
+  {% if inv.bill_to_email %}
+  <button onclick="doEmail(this)">&#9993; Email Invoice</button>
+  {% else %}
+  <button disabled title="No email on file for this customer" style="opacity:.5;cursor:not-allowed">&#9993; Email</button>
+  {% endif %}
   <button onclick="doPrint()">&#128438; Print / Save PDF</button>
   <button onclick="window.close()">&#10005; Close</button>
   <span>Invoice {{ inv.invoice_id }}{% if inv.corrects %} &nbsp;|&nbsp; Corrects: {{ inv.corrects }}{% endif %}</span>
 </div>
 
 <script>
+async function doEmail(btn) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res = await fetch('/invoices/{{ period }}/{{ inv.invoice_id }}/email', {method:'POST'});
+    const d = await res.json();
+    if (d.ok) {
+      btn.textContent = '✓ Sent to ' + d.sent_to;
+      btn.style.background = '#059669';
+    } else {
+      alert(d.error || 'Email failed');
+      btn.disabled = false; btn.textContent = orig;
+    }
+  } catch(e) {
+    alert('Error: ' + e);
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
 function doPrint() {
   {% if inv.corrects %}
   const note = document.getElementById('correction-note');
@@ -148,7 +176,7 @@ function doPrint() {
   );
   if (note) note.style.display = include ? '' : 'none';
   window.print();
-  if (note) note.style.display = '';   // always restore for screen view
+  if (note) note.style.display = '';
   {% else %}
   window.print();
   {% endif %}
@@ -168,39 +196,44 @@ function doPrint() {
   <!-- Brand banner -->
   <div class="brand-banner">Small Jobs</div>
 
-  <!-- Header -->
+  <!-- Month / service heading — above the customer/provider block -->
+  <div class="month-heading">{{ inv.month_label }} &ndash; Handyman Services</div>
+
+  <!-- Header: Customer (LEFT) | divider | Provider (RIGHT) -->
   <div class="inv-header">
+
+    <!-- Customer block -->
+    <div class="inv-customer">
+      <div class="cust-name">{{ inv.bill_to_name }}</div>
+      {% if inv.property_label %}
+      <div><strong>Property:</strong> {{ inv.property_label }}</div>
+      {% endif %}
+      <div class="cust-meta">
+        <table>
+          <tr><td>Invoice No.</td><td>{{ inv.invoice_id }}</td></tr>
+          <tr><td>Invoice Date:</td><td>{{ inv.invoice_date }}</td></tr>
+          {% if inv.due_date %}
+          <tr><td>Due Date:</td><td>{{ inv.due_date }}</td></tr>
+          {% endif %}
+          {% if inv.net_days %}
+          <tr><td>Terms:</td><td>Net {{ inv.net_days }}</td></tr>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+
+    <!-- Divider — up against the customer block -->
+    <div class="inv-divider"></div>
+
+    <!-- Provider block -->
     <div class="inv-from">
       <div class="from-name">Tom Smallwood</div>
       <div>4868 Morningstar Lane</div>
       <div>Tetonia, ID &nbsp;83452</div>
       <div>303-829-2016</div>
     </div>
-    <div class="inv-divider"></div>
-    <div class="inv-meta">
-      <table>
-        <tr><td>Invoice No.</td><td>{{ inv.invoice_id }}</td></tr>
-        <tr><td>Invoice Date:</td><td>{{ inv.invoice_date }}</td></tr>
-        <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
-        <tr><td>Bill To:</td><td>{{ inv.bill_to_name }}</td></tr>
-        {% if inv.property_label %}
-        <tr><td>Property:</td><td>{{ inv.property_label }}</td></tr>
-        {% endif %}
-        {% if inv.bill_to_address %}
-        <tr><td>Address:</td><td>{{ inv.bill_to_address }}</td></tr>
-        {% endif %}
-        {% if inv.bill_to_phone %}
-        <tr><td>Phone:</td><td>{{ inv.bill_to_phone }}</td></tr>
-        {% endif %}
-        {% if inv.bill_to_email %}
-        <tr><td>E-mail:</td><td>{{ inv.bill_to_email }}</td></tr>
-        {% endif %}
-      </table>
-    </div>
-  </div>
 
-  <!-- Month / service heading -->
-  <div class="month-heading">{{ inv.month_label }} &ndash; Handyman Services</div>
+  </div>
 
   <!-- Labor table -->
   <div class="section-label">Labor</div>
@@ -270,14 +303,6 @@ function doPrint() {
       <tr class="section-row">
         <td>Invoice Subtotal</td>
         <td>${{ '%.2f'|format(inv.invoice_subtotal) }}</td>
-      </tr>
-      <tr>
-        <td>Tax Rate</td>
-        <td>{{ '%.2f'|format(inv.tax_rate * 100) }}%</td>
-      </tr>
-      <tr>
-        <td>Sales Tax</td>
-        <td>${{ '%.2f'|format(inv.tax_amount) }}</td>
       </tr>
       {% if inv.other %}
       <tr>

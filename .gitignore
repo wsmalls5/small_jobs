@@ -1,8 +1,8 @@
 # ── Sensitive data — never commit ────────────────────────────
-customers.json
 customers_export.csv
 data/
 example_data/
+.env
 
 # ── Python ────────────────────────────────────────────────────
 __pycache__/

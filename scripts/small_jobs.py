@@ -5,20 +5,31 @@ Run:  python scripts/receipt_app.py
 Open: http://localhost:5001
 """
 
-import json, os, re, uuid, datetime, calendar
+import json, os, re, uuid, datetime, calendar, smtplib, ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text      import MIMEText
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 
 BASE_DIR  = Path(__file__).resolve().parent.parent
 UPLOADS   = BASE_DIR / "data" / "receipts" / "pending"
+INBOX     = BASE_DIR / "data" / "receipts" / "inbox"
 EXPENSES  = BASE_DIR / "data" / "expenses"
 HOURS     = BASE_DIR / "data" / "hours"
 INVOICES  = BASE_DIR / "data" / "invoices"
-CUSTOMERS = BASE_DIR / "customers.json"
+CUSTOMERS = BASE_DIR / "data" / "customers" / "customers.json"
+TASKS     = BASE_DIR / "data" / "tasks" / "tasks.json"
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 
-for d in (UPLOADS, EXPENSES, HOURS, INVOICES):
+# ── Email config (set these in your environment or a .env file) ───────────────
+SMTP_HOST  = os.environ.get("SMTP_HOST",  "smtp.gmail.com")
+SMTP_PORT  = int(os.environ.get("SMTP_PORT",  "587"))
+SMTP_USER  = os.environ.get("SMTP_USER",  "")   # your Gmail / SMTP address
+SMTP_PASS  = os.environ.get("SMTP_PASS",  "")   # app password (not login password)
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "") or SMTP_USER
+
+for d in (UPLOADS, INBOX, EXPENSES, HOURS, INVOICES, TASKS.parent):
     d.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__, template_folder=str(TEMPLATES))
@@ -624,6 +635,52 @@ def serve_upload(filename):
     return send_from_directory(str(UPLOADS), filename)
 
 
+# ── Receipts inbox (auto-import queue) ───────────────────────────────────────
+
+@app.route("/receipts/inbox")
+def get_receipts_inbox():
+    items = []
+    for f in sorted(INBOX.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        if f.suffix.lower() in ALLOWED_EXT:
+            stat = f.stat()
+            items.append({
+                "filename": f.name,
+                "size":     stat.st_size,
+                "modified": stat.st_mtime,
+            })
+    return jsonify(items)
+
+
+@app.route("/receipts/inbox/<path:filename>/review", methods=["POST"])
+def review_inbox_item(filename):
+    import shutil
+    src = INBOX / filename
+    if not src.exists():
+        return jsonify({"error": "not found"}), 404
+    dest_name = str(uuid.uuid4()) + src.suffix.lower()
+    dest = UPLOADS / dest_name
+    shutil.copy2(str(src), str(dest))
+    lines, items   = ocr_file(dest)
+    vendor, date   = guess_meta(lines)
+    return jsonify({
+        "filename":     dest_name,
+        "vendor":       vendor,
+        "date":         date,
+        "lines":        lines[:50],
+        "items":        items,
+        "ocr_ran":      bool(lines),
+        "inbox_source": filename,
+    })
+
+
+@app.route("/receipts/inbox/<path:filename>", methods=["DELETE"])
+def delete_inbox_item(filename):
+    f = INBOX / filename
+    if f.exists():
+        f.unlink()
+    return jsonify({"ok": True})
+
+
 @app.route("/save", methods=["POST"])
 def api_save():
     body         = request.get_json()
@@ -791,6 +848,28 @@ def update_hours_entry(period, entry_id):
     return jsonify({"ok": True})
 
 
+@app.route("/hours/<period>/bulk-assign", methods=["POST"])
+def bulk_assign_hours(period):
+    body         = request.get_json() or {}
+    entry_ids    = set(body.get("entry_ids", []))
+    customer_key = body.get("customer_key", "")
+    if not entry_ids or not customer_key:
+        return jsonify({"error": "entry_ids and customer_key required"}), 400
+    fp = HOURS / f"hours_{period}.json"
+    if not fp.exists():
+        return jsonify({"error": "not found"}), 404
+    record  = json.loads(fp.read_text(encoding="utf-8-sig"))
+    updated = 0
+    for e in record.get("entries", []):
+        if e.get("entry_id") in entry_ids:
+            e["customer_key"] = customer_key
+            updated += 1
+    tmp = fp.with_suffix(".tmp")
+    tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(fp))
+    return jsonify({"ok": True, "updated": updated})
+
+
 @app.route("/hours/<period>/entries/<entry_id>", methods=["DELETE"])
 def delete_hours_entry(period, entry_id):
     fp = HOURS / f"hours_{period}.json"
@@ -913,6 +992,23 @@ _NON_BILLABLE_KEYS  = {"personal_tools"}
 
 @app.route("/invoices")
 def api_invoices_list():
+    meta             = _invoice_meta()
+    net_days_default = meta.get("net_days", 20)
+    today            = datetime.date.today()
+
+    def _is_overdue(inv):
+        if inv.get("status") != "sent":
+            return False
+        due = inv.get("due_date")
+        if due:
+            return datetime.date.fromisoformat(due) < today
+        sent = inv.get("sent_at")
+        if not sent:
+            return False
+        net      = inv.get("net_days", net_days_default)
+        sent_dt  = datetime.datetime.fromisoformat(sent).date()
+        return (today - sent_dt).days > net
+
     files = sorted(INVOICES.glob("invoices_*.json"), reverse=True)
     out = []
     for fp in files:
@@ -921,15 +1017,31 @@ def api_invoices_list():
             invs   = json.loads(fp.read_text(encoding="utf-8-sig"))
             active = [i for i in invs if not i.get("superseded")]
             out.append({
-                "period": period,
-                "count":  len(active),
-                "draft":  sum(1 for i in active if i.get("status") == "draft"),
-                "sent":   sum(1 for i in active if i.get("status") == "sent"),
-                "paid":   sum(1 for i in active if i.get("status") == "paid"),
+                "period":  period,
+                "count":   len(active),
+                "draft":   sum(1 for i in active if i.get("status") == "draft"),
+                "sent":    sum(1 for i in active if i.get("status") == "sent"),
+                "paid":    sum(1 for i in active if i.get("status") == "paid"),
+                "overdue": sum(1 for i in active if _is_overdue(i)),
             })
         except Exception:
             pass
     return jsonify(out)
+
+
+@app.route("/invoices/settings", methods=["GET"])
+def get_invoice_settings():
+    meta = _invoice_meta()
+    return jsonify({"net_days": meta.get("net_days", 20)})
+
+
+@app.route("/invoices/settings", methods=["PUT"])
+def put_invoice_settings():
+    body     = request.get_json() or {}
+    meta     = _invoice_meta()
+    meta["net_days"] = max(1, int(body.get("net_days", 20)))
+    _save_invoice_meta(meta)
+    return jsonify({"ok": True, "net_days": meta["net_days"]})
 
 
 @app.route("/invoices/<period>")
@@ -952,10 +1064,19 @@ def generate_invoices(period):
     db              = _load_customers()
 
     # Parse period
-    year, month = int(period.split("_")[0]), int(period.split("_")[1])
+    year, month  = int(period.split("_")[0]), int(period.split("_")[1])
     last_day     = calendar.monthrange(year, month)[1]
     invoice_date = f"{year}-{month:02d}-{last_day:02d}"
     month_name   = datetime.datetime(year, month, 1).strftime("%B %Y")
+
+    # Net days / due date
+    meta     = _invoice_meta()
+    net_days = int(body.get("net_days") or meta.get("net_days", 20))
+    if net_days != meta.get("net_days"):
+        meta["net_days"] = net_days
+        _save_invoice_meta(meta)
+    due_date = (datetime.date(year, month, last_day) +
+                datetime.timedelta(days=net_days)).isoformat()
 
     # Load hours for period
     hours_entries = []
@@ -1062,6 +1183,8 @@ def generate_invoices(period):
                     "materials_subtotal":  materials_subtotal,
                     "invoice_subtotal":    invoice_subtotal,
                     "total":               invoice_subtotal,
+                    "due_date":            due_date,
+                    "net_days":            net_days,
                     "regenerated_at":      now,
                     "version":             old.get("version", 1) + 1,
                 })
@@ -1073,14 +1196,16 @@ def generate_invoices(period):
                 new_inv = _build_invoice(corrected_id, ck, cust, period, invoice_date,
                                          month_name, labor_entries, material_entries,
                                          labor_subtotal, materials_subtotal, invoice_subtotal,
-                                         now, corrects=old["invoice_id"])
+                                         now, corrects=old["invoice_id"],
+                                         net_days=net_days, due_date=due_date)
                 existing.append(new_inv)
                 generated.append(corrected_id)
         else:
             inv_id  = _next_invoice_id(year)
             new_inv = _build_invoice(inv_id, ck, cust, period, invoice_date, month_name,
                                      labor_entries, material_entries, labor_subtotal,
-                                     materials_subtotal, invoice_subtotal, now)
+                                     materials_subtotal, invoice_subtotal, now,
+                                     net_days=net_days, due_date=due_date)
             existing.append(new_inv)
             generated.append(inv_id)
 
@@ -1090,7 +1215,8 @@ def generate_invoices(period):
 
 def _build_invoice(inv_id, ck, cust, period, invoice_date, month_name,
                    labor_entries, material_entries, labor_subtotal,
-                   materials_subtotal, invoice_subtotal, now, corrects=None):
+                   materials_subtotal, invoice_subtotal, now,
+                   corrects=None, net_days=20, due_date=None):
     return {
         "invoice_id":          inv_id,
         "customer_key":        ck,
@@ -1103,6 +1229,8 @@ def _build_invoice(inv_id, ck, cust, period, invoice_date, month_name,
         "period":              period,
         "month_label":         month_name,
         "invoice_date":        invoice_date,
+        "due_date":            due_date,
+        "net_days":            net_days,
         "job_description":     f"handy man jobs – {month_name}",
         "status":              "draft",
         "created_at":          now,
@@ -1143,6 +1271,12 @@ def update_invoice_status(period, invoice_id):
     elif new_status == "sent":
         if not inv.get("sent_at"):
             inv["sent_at"] = now
+        # Invoice date = the date it was actually sent
+        today = datetime.date.today().isoformat()
+        inv["invoice_date"] = today
+        net_days = inv.get("net_days", 20)
+        due = datetime.date.today() + datetime.timedelta(days=net_days)
+        inv["due_date"] = due.isoformat()
         inv.pop("paid_at", None)   # clear if reverting from paid
     elif new_status == "paid":
         if not inv.get("sent_at"):
@@ -1151,6 +1285,73 @@ def update_invoice_status(period, invoice_id):
             inv["paid_at"] = now
     _save_invoices(period, invs)
     return jsonify({"ok": True, "invoice": inv})
+
+
+@app.route("/invoices/<period>/<invoice_id>/email", methods=["POST"])
+def email_invoice(period, invoice_id):
+    if not SMTP_USER or not SMTP_PASS:
+        return jsonify({"error": "Email not configured. Set SMTP_USER and SMTP_PASS environment variables."}), 503
+    invs = _load_invoices(period)
+    inv  = next((i for i in invs if i["invoice_id"] == invoice_id), None)
+    if not inv:
+        return jsonify({"error": "Invoice not found"}), 404
+    recipient = inv.get("bill_to_email", "").strip()
+    if not recipient:
+        try:
+            db = _load_customers()
+            cust = db.get(inv.get("customer_key", ""), {})
+            recipient = cust.get("email", "").strip()
+            if recipient:
+                inv["bill_to_email"] = recipient   # back-fill for future renders
+        except Exception:
+            pass
+    if not recipient:
+        return jsonify({"error": "No email address on file for this customer"}), 400
+
+    # Backfill month_label if missing (same logic as print route)
+    if not inv.get("month_label"):
+        try:
+            y, m = int(period.split("_")[0]), int(period.split("_")[1])
+            inv["month_label"] = datetime.datetime(y, m, 1).strftime("%B %Y")
+        except Exception:
+            inv["month_label"] = period
+
+    # Backfill property_label for old invoices generated before the field was added
+    if not inv.get("property_label"):
+        try:
+            db = _load_customers()
+            cust = db.get(inv.get("customer_key", ""), {})
+            inv["property_label"] = cust.get("property_label", "")
+        except Exception:
+            pass
+
+    html_body = render_template("invoice_email.html", inv=inv)
+    subject   = f"Invoice {invoice_id} – {inv.get('month_label', period)} – Handyman Services"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = EMAIL_FROM
+    msg["To"]      = recipient
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    try:
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls(context=ctx)
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(EMAIL_FROM, recipient, msg.as_string())
+    except Exception as e:
+        return jsonify({"error": f"SMTP error: {str(e)}"}), 500
+
+    # Auto-advance to Sent (if still draft)
+    now = datetime.datetime.now().isoformat(timespec="seconds")
+    if inv.get("status") == "draft":
+        inv["status"]  = "sent"
+        inv["sent_at"] = now
+    inv["last_emailed_at"] = now
+    _save_invoices(period, invs)
+    return jsonify({"ok": True, "sent_to": recipient, "invoice": inv})
 
 
 @app.route("/invoices/<period>/<invoice_id>", methods=["DELETE"])
@@ -1178,7 +1379,82 @@ def print_invoice(period, invoice_id):
             inv["month_label"] = datetime.datetime(int(y), int(m), 1).strftime("%B %Y")
         except Exception:
             inv["month_label"] = ""
-    return render_template("invoice_print.html", inv=inv)
+    # Backfill property_label for old invoices generated before the field was added
+    if not inv.get("property_label"):
+        try:
+            db = _load_customers()
+            cust = db.get(inv.get("customer_key", ""), {})
+            inv["property_label"] = cust.get("property_label", "")
+        except Exception:
+            pass
+    return render_template("invoice_print.html", inv=inv, period=period)
+
+
+# ── Tasks ────────────────────────────────────────────────────────────────────
+
+def _load_tasks():
+    if not TASKS.exists():
+        return []
+    return json.loads(TASKS.read_text(encoding="utf-8-sig"))
+
+def _save_tasks(tasks):
+    tmp = TASKS.with_suffix(".tmp")
+    tmp.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
+    os.replace(tmp, TASKS)
+
+def _next_task_id(tasks):
+    nums = [int(t["task_id"].split("_")[1]) for t in tasks
+            if t.get("task_id", "").startswith("task_") and t["task_id"].split("_")[1].isdigit()]
+    return f"task_{(max(nums) + 1) if nums else 1:04d}"
+
+@app.route("/tasks")
+def api_tasks():
+    return jsonify(_load_tasks())
+
+@app.route("/tasks", methods=["POST"])
+def create_task():
+    body  = request.get_json() or {}
+    tasks = _load_tasks()
+    now   = datetime.datetime.now().isoformat(timespec="seconds")
+    task  = {
+        "task_id":        _next_task_id(tasks),
+        "customer_key":   body.get("customer_key", ""),
+        "job_label":      body.get("job_label", ""),
+        "description":    body.get("description", "").strip(),
+        "hours_estimate": body.get("hours_estimate") or None,
+        "priority":       body.get("priority", "medium"),
+        "due_date":       body.get("due_date") or None,
+        "status":         "open",
+        "created_at":     now,
+        "completed_at":   None,
+    }
+    tasks.append(task)
+    _save_tasks(tasks)
+    return jsonify({"ok": True, "task": task})
+
+@app.route("/tasks/<task_id>", methods=["PUT"])
+def update_task(task_id):
+    body  = request.get_json() or {}
+    tasks = _load_tasks()
+    task  = next((t for t in tasks if t["task_id"] == task_id), None)
+    if not task:
+        return jsonify({"error": "not found"}), 404
+    for field in ("description", "customer_key", "job_label", "hours_estimate",
+                  "priority", "due_date", "status"):
+        if field in body:
+            task[field] = body[field]
+    if task.get("status") == "complete" and not task.get("completed_at"):
+        task["completed_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+    elif task.get("status") != "complete":
+        task["completed_at"] = None
+    _save_tasks(tasks)
+    return jsonify({"ok": True, "task": task})
+
+@app.route("/tasks/<task_id>", methods=["DELETE"])
+def delete_task(task_id):
+    tasks = [t for t in _load_tasks() if t["task_id"] != task_id]
+    _save_tasks(tasks)
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":

@@ -72,8 +72,18 @@
   .type-rental_advisor { background:#dbeafe; color:#1e40af; }
   .type-hoa            { background:#dcfce7; color:#166534; }
   .type-multi_property { background:#fef9c3; color:#854d0e; }
-  .type-individual     { background:#f3f4f6; color:#374151; }
+  .type-individual     { background:#ede9fe; color:#5b21b6; }
   .type-personal       { background:#fce7f3; color:#9d174d; }
+
+  /* ── Net days pill ── */
+  #inv-net-days-btn { border-radius:999px; font-weight:600; font-size:.75rem; }
+  #inv-net-days-btn.editing { display:none; }
+  #inv-net-days-input {
+    display:none; width:90px; font-size:.75rem; border-radius:999px;
+    border:2px solid #dc3545; color:#dc3545; text-align:center;
+    padding:.2rem .6rem; font-weight:600; outline:none;
+  }
+  #inv-net-days-input.visible { display:inline-block; }
 
   /* ── Customer tab ── */
   .cust-table th { font-size:.8rem; text-transform:uppercase; letter-spacing:.5px;
@@ -108,6 +118,39 @@
                       padding:.4rem .75rem; background:#f8f9fa;
                       border-radius:6px 6px 0 0; border:1px solid #dee2e6;
                       border-bottom:none; display:flex; justify-content:space-between; }
+
+  /* ── Tasks tab ── */
+  .task-card { border-left:4px solid transparent; }
+  .task-card.priority-high   { border-left-color:#dc3545; }
+  .task-card.priority-medium { border-left-color:#fd7e14; }
+  .task-card.priority-low    { border-left-color:#3b82f6; }
+  .task-group-hdr { font-size:.78rem; text-transform:uppercase; letter-spacing:.5px;
+                    color:#6c757d; font-weight:600; padding:.35rem 0;
+                    border-bottom:1px solid #dee2e6; margin-bottom:.5rem; }
+  .task-cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .task-cal-dow  { font-size:.7rem; text-align:center; font-weight:600;
+                   color:#6c757d; text-transform:uppercase; padding-bottom:4px; }
+  .task-cal-day  { min-height:76px; background:#f8f9fa; border-radius:5px; padding:4px 5px; }
+  .task-cal-day.today       { background:#d8f0e9; }
+  .task-cal-day.other-month { opacity:.35; pointer-events:none; }
+  .task-cal-day.has-overdue { outline:2px solid #dc3545; outline-offset:-2px; }
+  .task-cal-daynum { font-size:.72rem; font-weight:700; color:#374151; margin-bottom:2px; }
+  .task-cal-chip  { font-size:.62rem; border-radius:3px; padding:1px 4px; margin-bottom:2px;
+                    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+  .task-cal-chip.chip-due-high   { background:#dc2626; color:#fff; }
+  .task-cal-chip.chip-due-medium { background:#f97316; color:#fff; }
+  .task-cal-chip.chip-due-low    { background:#3b82f6; color:#fff; }
+  .task-cal-chip.chip-work-high   { background:#fee2e2; color:#b91c1c; border:1px dashed #fca5a5; }
+  .task-cal-chip.chip-work-medium { background:#ffedd5; color:#c2410c; border:1px dashed #fdba74; }
+  .task-cal-chip.chip-work-low    { background:#dbeafe; color:#1d4ed8; border:1px dashed #93c5fd; }
+
+  /* Invoice status: future buttons — outline style + muted hover instead of full fill */
+  .btn-inv-future-secondary { color:#6c757d; border:1px solid #6c757d; }
+  .btn-inv-future-secondary:hover { background:rgba(108,117,125,.18) !important; }
+  .btn-inv-future-primary { color:#0d6efd; border:1px solid #0d6efd; }
+  .btn-inv-future-primary:hover { background:rgba(13,110,253,.13) !important; }
+  .btn-inv-future-success { color:#198754; border:1px solid #198754; }
+  .btn-inv-future-success:hover { background:rgba(25,135,84,.13) !important; }
 </style>
 </head>
 <body>
@@ -134,6 +177,10 @@
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="tab-invoices-btn" data-bs-toggle="tab"
               data-bs-target="#tab-invoices" type="button" role="tab">Invoices</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-tasks-btn" data-bs-toggle="tab"
+              data-bs-target="#tab-tasks" type="button" role="tab">Tasks</button>
     </li>
   </ul>
 </div>
@@ -196,9 +243,18 @@
       <!-- Receipt table (PRIMARY) -->
       <div id="receipts-table-view">
         <div class="d-flex justify-content-between align-items-center px-0 pt-0 pb-2 border-bottom">
-          <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Receipts</h6>
+          <ul class="nav nav-tabs border-bottom-0 mb-0" id="rcpt-sub-tabs">
+            <li class="nav-item">
+              <button class="nav-link text-secondary fw-semibold py-1 px-3 active" id="rcpt-sub-receipts-btn" style="font-size:.82rem;text-transform:uppercase;letter-spacing:.5px">Receipts</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link text-secondary fw-semibold py-1 px-3" id="rcpt-sub-inbox-btn" style="font-size:.82rem;text-transform:uppercase;letter-spacing:.5px">
+                Inbox <span class="badge bg-warning text-dark ms-1" id="inbox-count-badge" style="display:none;font-size:.6rem">0</span>
+              </button>
+            </li>
+          </ul>
           <div class="d-flex gap-2 align-items-center">
-            <div class="btn-group btn-group-sm" role="group">
+            <div class="btn-group btn-group-sm" id="rcpt-view-toggle-group" role="group">
               <button type="button" class="btn btn-dark" id="rcpt-view-date-btn">By Date</button>
               <button type="button" class="btn btn-outline-secondary" id="rcpt-view-job-btn">By Job</button>
             </div>
@@ -206,12 +262,39 @@
             <button class="btn btn-sm btn-primary" id="add-receipt-import-btn">+ Import Receipt</button>
           </div>
         </div>
-        <div class="pt-3">
+
+        <!-- Receipts sub-pane -->
+        <div id="rcpt-sub-receipts" class="pt-3">
           <ul class="nav nav-tabs mb-0" id="rcptMonthTabs" role="tablist"></ul>
           <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="rcptMonthContent"></div>
           <div id="rcpt-empty-msg" class="text-center text-muted py-5" style="display:none">
             <div style="font-size:2.5rem">&#x1f9fe;</div>
             <p class="mt-2">No receipts saved yet.</p>
+          </div>
+        </div>
+
+        <!-- Inbox sub-pane -->
+        <div id="rcpt-sub-inbox" style="display:none" class="pt-3">
+          <p class="text-muted small mb-2">
+            Files placed in <code>data/receipts/inbox/</code> appear here for review before being saved.
+            Click <strong>Review</strong> to open the receipt form.
+          </p>
+          <div class="card border-0 shadow-sm">
+            <div class="card-body p-0">
+              <table class="table table-sm table-hover align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Filename</th>
+                    <th style="width:100px">Size</th>
+                    <th style="width:160px">Added</th>
+                    <th style="width:120px"></th>
+                  </tr>
+                </thead>
+                <tbody id="inbox-tbody">
+                  <tr><td colspan="4" class="text-center text-muted py-4">No items in inbox.</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
@@ -321,7 +404,8 @@
                 </div>
               </div>
             </div>
-            <div class="d-flex gap-2 mt-3 justify-content-end">
+            <div class="d-flex gap-2 mt-3 justify-content-between align-items-center">
+              <button class="btn btn-sm btn-outline-secondary" id="save-cancel-btn">&#8592; Cancel</button>
               <button class="btn btn-primary px-4" id="save-btn">Save Receipt</button>
             </div>
           </div>
@@ -421,14 +505,16 @@
     <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
       <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Invoices</h6>
       <div class="d-flex gap-2 align-items-center">
+        <button id="inv-net-days-btn" class="btn btn-sm btn-outline-danger" title="Click to change net days">Net20 days</button>
+        <input type="number" id="inv-net-days-input" min="1" max="365" value="20" placeholder="days">
         <div class="btn-group btn-group-sm" id="inv-filter-group" role="group">
           <button type="button" class="btn btn-dark"             data-filter="all">All</button>
           <button type="button" class="btn btn-outline-secondary" data-filter="draft">Draft</button>
           <button type="button" class="btn btn-outline-primary"  data-filter="sent">Sent</button>
-          <button type="button" class="btn btn-outline-danger"   data-filter="overdue">Overdue</button>
           <button type="button" class="btn btn-outline-success"  data-filter="paid">Paid</button>
+          <button type="button" class="btn btn-outline-danger"   data-filter="overdue">Overdue</button>
         </div>
-        <button class="btn btn-sm btn-success" id="inv-generate-btn">&#9889; Generate Invoices</button>
+        <button class="btn btn-sm btn-success" id="inv-generate-btn">&#9889; Generate Invoices &#9889;</button>
       </div>
     </div>
     <div class="px-4 pt-3">
@@ -437,6 +523,60 @@
       <div id="inv-empty-msg" class="text-center text-muted py-5" style="display:none">
         <div style="font-size:2.5rem">&#128203;</div>
         <p class="mt-2">No invoices yet — import hours then click <strong>Generate Invoices</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB 5: TASKS ══════════════════════ -->
+  <div class="tab-pane fade" id="tab-tasks" role="tabpanel">
+    <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
+      <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Tasks</h6>
+      <button class="btn btn-sm btn-success" id="task-add-btn">+ Task</button>
+    </div>
+    <div class="px-4 pt-3">
+      <ul class="nav nav-tabs mb-3" id="taskSubTabs" role="tablist">
+        <li class="nav-item"><button class="nav-link active" id="task-sub-list-btn"
+          data-bs-toggle="tab" data-bs-target="#task-sub-list" type="button">List</button></li>
+        <li class="nav-item"><button class="nav-link" id="task-sub-cal-btn"
+          data-bs-toggle="tab" data-bs-target="#task-sub-cal" type="button">Calendar</button></li>
+        <li class="nav-item"><button class="nav-link" id="task-sub-archive-btn"
+          data-bs-toggle="tab" data-bs-target="#task-sub-archive" type="button">Archive</button></li>
+      </ul>
+      <div class="tab-content">
+
+        <!-- List -->
+        <div class="tab-pane fade show active" id="task-sub-list" role="tabpanel">
+          <div class="d-flex gap-2 mb-3">
+            <div class="btn-group btn-group-sm" id="task-view-group" role="group">
+              <button type="button" class="btn btn-dark"             data-tview="job">By Job</button>
+              <button type="button" class="btn btn-outline-secondary" data-tview="priority">By Priority</button>
+              <button type="button" class="btn btn-outline-secondary" data-tview="date">By Date</button>
+            </div>
+          </div>
+          <div id="task-list-container"></div>
+        </div>
+
+        <!-- Calendar -->
+        <div class="tab-pane fade" id="task-sub-cal" role="tabpanel">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <button class="btn btn-sm btn-outline-secondary" id="task-cal-prev">&#8592;</button>
+            <span class="fw-semibold" id="task-cal-heading" style="font-size:.95rem"></span>
+            <button class="btn btn-sm btn-outline-secondary" id="task-cal-next">&#8594;</button>
+          </div>
+          <div id="task-cal-container"></div>
+        </div>
+
+        <!-- Archive -->
+        <div class="tab-pane fade" id="task-sub-archive" role="tabpanel">
+          <div class="d-flex gap-2 mb-3">
+            <div class="btn-group btn-group-sm" id="task-archive-view-group" role="group">
+              <button type="button" class="btn btn-dark"              data-aview="job">By Job</button>
+              <button type="button" class="btn btn-outline-secondary" data-aview="date">By Date</button>
+            </div>
+          </div>
+          <div id="task-archive-container"></div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -511,6 +651,7 @@
         </div>
       </div>
       <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto" id="cust-del-btn" style="display:none">Delete</button>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="cust-save-btn">Save</button>
       </div>
@@ -605,6 +746,76 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="qa-save-btn">Add Customer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice email confirmation modal -->
+<div class="modal fade" id="invEmailModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" style="font-size:1rem">&#9993; Email Invoice</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-1">Send invoice to:</p>
+        <p class="fw-semibold mb-1" id="inv-email-recipient" style="font-size:.9rem;word-break:break-all"></p>
+        <p class="text-muted small mb-1">Subject: <span id="inv-email-subject"></span></p>
+        <p class="text-muted small mb-0">The invoice will auto-advance to <strong>Sent</strong> on delivery.</p>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="inv-email-send-btn">Send &#9993;</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Task add / edit modal -->
+<div class="modal fade" id="taskModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" id="task-modal-title" style="font-size:1rem">New Task</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Job / Customer</label>
+          <select class="form-select form-select-sm" id="task-form-customer">
+            <option value="">— No specific job —</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Task <span class="text-danger">*</span></label>
+          <textarea class="form-control form-control-sm" id="task-form-desc" rows="3"
+            placeholder="e.g. Fix leaky toilet in master bathroom"></textarea>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-4">
+            <label class="form-label small fw-semibold">Priority</label>
+            <select class="form-select form-select-sm" id="task-form-priority">
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="col-4">
+            <label class="form-label small fw-semibold">Hours estimate</label>
+            <input type="number" class="form-control form-control-sm" id="task-form-hours"
+              min="0.5" step="0.5" placeholder="optional">
+          </div>
+          <div class="col-4">
+            <label class="form-label small fw-semibold">Due date</label>
+            <input type="date" class="form-control form-control-sm" id="task-form-due">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-success" id="task-modal-save">Save</button>
       </div>
     </div>
   </div>
@@ -859,19 +1070,12 @@ function renderCustomerTables(filter = '') {
     const typeRows = rows.filter(c => (c.customer_type || 'individual') === type);
     const typeName = TYPE_DISPLAY[type] || type;
     const tableRows = typeRows.map(c => `
-      <tr>
+      <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer">
         <td class="fw-semibold small">${escHtml(c.property_label || c.key)}</td>
         <td class="text-muted small">${escHtml(c.bill_to_name || '')}</td>
         <td class="text-muted small" style="white-space:nowrap">$${parseFloat(c.hourly_rate||70).toFixed(0)}/h</td>
-        <td style="white-space:nowrap">
-          <button class="btn btn-sm btn-outline-secondary py-0 px-2 me-1 edit-cust-btn"
-                  data-key="${escHtml(c.key)}">Edit</button>
-          <button class="btn btn-sm btn-outline-danger py-0 px-2 del-cust-btn"
-                  data-key="${escHtml(c.key)}"
-                  data-label="${escHtml(c.property_label||c.key)}">Del</button>
-        </td>
       </tr>`).join('') ||
-      `<tr><td colspan="4" class="text-center text-muted py-3 small">No entries</td></tr>`;
+      `<tr><td colspan="3" class="text-center text-muted py-3 small">No entries</td></tr>`;
     panel.innerHTML = `
       <div class="card type-panel-card">
         <div class="card-header type-${type}">
@@ -882,7 +1086,6 @@ function renderCustomerTables(filter = '') {
           <table class="table table-sm table-hover cust-table align-middle mb-0">
             <thead><tr>
               <th>Property</th><th>Bill To</th><th>Rate</th>
-              <th style="width:90px"></th>
             </tr></thead>
             <tbody>${tableRows}</tbody>
           </table>
@@ -893,21 +1096,14 @@ function renderCustomerTables(filter = '') {
   // Full table
   custTbody.innerHTML = rows.length
     ? rows.map((c, i) => `
-        <tr>
+        <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer">
           <td class="text-muted">${i+1}</td>
           <td class="fw-semibold">${escHtml(c.property_label || c.key)}</td>
           <td class="text-muted">${escHtml(c.bill_to_name || '')}</td>
           <td>$${parseFloat(c.hourly_rate||70).toFixed(0)}/h</td>
           <td><span class="type-badge type-${c.customer_type||'individual'}">${escHtml(TYPE_DISPLAY[c.customer_type]||c.customer_type||'Individual')}</span></td>
-          <td>
-            <button class="btn btn-sm btn-outline-secondary py-0 px-2 me-1 edit-cust-btn"
-                    data-key="${escHtml(c.key)}">Edit</button>
-            <button class="btn btn-sm btn-outline-danger py-0 px-2 del-cust-btn"
-                    data-key="${escHtml(c.key)}"
-                    data-label="${escHtml(c.property_label||c.key)}">Del</button>
-          </td>
         </tr>`).join('')
-    : `<tr><td colspan="6" class="text-center text-muted py-4">No customers found.</td></tr>`;
+    : `<tr><td colspan="5" class="text-center text-muted py-4">No customers found.</td></tr>`;
 }
 
 function loadCustomerTab() {
@@ -918,40 +1114,39 @@ custSearch.addEventListener('input', () => renderCustomerTables(custSearch.value
 
 // Delegated handler covers both type-panel tables and full table
 document.getElementById('tab-customers').addEventListener('click', async e => {
-  const editBtn = e.target.closest('.edit-cust-btn');
-  const delBtn  = e.target.closest('.del-cust-btn');
+  const row = e.target.closest('tr.cust-row');
+  if (!row) return;
+  const key = row.dataset.key;
+  const res = await fetch(`/customers/${encodeURIComponent(key)}`);
+  const c   = await res.json();
+  document.getElementById('cust-modal-title').textContent = 'Edit Customer';
+  document.getElementById('cust-edit-key').value  = key;
+  document.getElementById('cm-label').value        = c.property_label  || '';
+  document.getElementById('cm-billto').value       = c.bill_to_name    || '';
+  document.getElementById('cm-address').value      = c.address         || '';
+  document.getElementById('cm-phone').value        = c.phone           || '';
+  document.getElementById('cm-email').value        = c.email           || '';
+  document.getElementById('cm-rate').value         = c.hourly_rate     || 70;
+  document.getElementById('cm-type').value         = c.customer_type   || 'individual';
+  aliasList.innerHTML = '';
+  (c.aliases || []).forEach(a => addAliasRow(a));
+  document.getElementById('cust-del-btn').style.display = '';
+  custModal.show();
+});
 
-  if (editBtn) {
-    const key = editBtn.dataset.key;
-    const res = await fetch(`/customers/${encodeURIComponent(key)}`);
-    const c   = await res.json();
-    document.getElementById('cust-modal-title').textContent = 'Edit Customer';
-    document.getElementById('cust-edit-key').value  = key;
-    document.getElementById('cm-label').value        = c.property_label  || '';
-    document.getElementById('cm-billto').value       = c.bill_to_name    || '';
-    document.getElementById('cm-address').value      = c.address         || '';
-    document.getElementById('cm-phone').value        = c.phone           || '';
-    document.getElementById('cm-email').value        = c.email           || '';
-    document.getElementById('cm-rate').value         = c.hourly_rate     || 70;
-    document.getElementById('cm-type').value         = c.customer_type   || 'individual';
-    aliasList.innerHTML = '';
-    (c.aliases || []).forEach(a => addAliasRow(a));
-    custModal.show();
-  }
-
-  if (delBtn) {
-    const key   = delBtn.dataset.key;
-    const label = delBtn.dataset.label;
-    if (!confirm(`Delete "${label}"? This cannot be undone.`)) return;
-    const res = await fetch(`/customers/${encodeURIComponent(key)}`, { method:'DELETE' });
-    const d   = await res.json();
-    if (d.ok) {
-      showToast(`Deleted ${label}`, 'warning');
-      await loadAllCustomers();
-      loadCustomerTab();
-    } else {
-      showToast('Delete failed', 'danger');
-    }
+document.getElementById('cust-del-btn').addEventListener('click', async () => {
+  const key   = document.getElementById('cust-edit-key').value;
+  const label = document.getElementById('cm-label').value || key;
+  if (!confirm(`Delete "${label}"? This cannot be undone.`)) return;
+  custModal.hide();
+  const res = await fetch(`/customers/${encodeURIComponent(key)}`, { method: 'DELETE' });
+  const d   = await res.json();
+  if (d.ok) {
+    showToast(`Deleted ${label}`, 'warning');
+    await loadAllCustomers();
+    loadCustomerTab();
+  } else {
+    showToast('Delete failed', 'danger');
   }
 });
 
@@ -966,6 +1161,7 @@ addCustBtn.addEventListener('click', () => {
   document.getElementById('cm-rate').value         = '70';
   document.getElementById('cm-type').value         = 'individual';
   aliasList.innerHTML = '';
+  document.getElementById('cust-del-btn').style.display = 'none';
   custModal.show();
 });
 
@@ -1257,7 +1453,7 @@ async function loadReceiptsMainView() {
                 data-bs-toggle="tab" data-bs-target="#rcpt-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
           ${formatPeriodLabel(h.period)}
-          <span class="badge bg-secondary ms-1" style="font-size:.65rem">$${h.total.toFixed(0)}</span>
+          <span class="badge bg-secondary ms-1" style="font-size:.65rem">$${h.total.toFixed(2)}</span>
         </button>
       </li>`).join('');
     content.innerHTML = data.map(h => `
@@ -1485,10 +1681,15 @@ async function handleFile(file) {
   }
   dropZone.classList.remove('drag-over');
   if (data.error) { uploadStatus.textContent = data.error; return; }
+  processUploadResponse(data);
+}
 
-  S.filename  = data.filename;
-  S.items     = data.items || [];
-  S.singleJob = false;
+function processUploadResponse(data) {
+  const ext = (data.filename || '').split('.').pop().toLowerCase();
+  S.filename     = data.filename;
+  S.inboxSource  = data.inbox_source || null;
+  S.items        = data.items || [];
+  S.singleJob    = false;
   singleToggle.checked = false;
 
   const url = '/uploads/' + data.filename;
@@ -1524,6 +1725,86 @@ document.getElementById('add-receipt-manual-btn').addEventListener('click', show
 document.getElementById('add-receipt-import-btn').addEventListener('click', showReceiptsUpload);
 document.getElementById('receipts-back-btn').addEventListener('click', showReceiptsTable);
 document.getElementById('cancel-btn').addEventListener('click', showReceiptsTable);
+document.getElementById('save-cancel-btn').addEventListener('click', showReceiptsTable);
+
+// ── Inbox sub-tab ────────────────────────────────────────────────────────────
+function showRcptSubPane(which) {
+  document.getElementById('rcpt-sub-receipts').style.display = which === 'receipts' ? '' : 'none';
+  document.getElementById('rcpt-sub-inbox').style.display    = which === 'inbox'    ? '' : 'none';
+  document.getElementById('rcpt-view-toggle-group').style.display = which === 'receipts' ? '' : 'none';
+  document.getElementById('rcpt-sub-receipts-btn').className =
+    'nav-link text-secondary fw-semibold py-1 px-3' + (which === 'receipts' ? ' active' : '');
+  document.getElementById('rcpt-sub-inbox-btn').className =
+    'nav-link text-secondary fw-semibold py-1 px-3' + (which === 'inbox'    ? ' active' : '');
+  if (which === 'inbox') loadInbox();
+}
+
+async function loadInbox() {
+  const tbody = document.getElementById('inbox-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="text-muted small text-center py-3">Loading…</td></tr>';
+  try {
+    const res   = await fetch('/receipts/inbox');
+    const items = await res.json();
+    const badge = document.getElementById('inbox-count-badge');
+    if (items.length) {
+      badge.textContent    = items.length;
+      badge.style.display  = '';
+    } else {
+      badge.style.display  = 'none';
+    }
+    tbody.innerHTML = items.length ? items.map(item => `
+      <tr>
+        <td class="small">${escHtml(item.filename)}</td>
+        <td class="text-muted small">${(item.size/1024).toFixed(1)} KB</td>
+        <td class="text-muted small">${new Date(item.modified*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary py-0 px-2 inbox-review-btn me-1"
+                  data-filename="${escHtml(item.filename)}">Review</button>
+          <button class="btn btn-sm btn-outline-danger py-0 px-2 inbox-del-btn"
+                  data-filename="${escHtml(item.filename)}" title="Remove from inbox">&#10005;</button>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="text-center text-muted py-4">No items in inbox.</td></tr>';
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-danger small text-center py-3">Could not load inbox.</td></tr>';
+  }
+}
+
+document.getElementById('rcpt-sub-receipts-btn').addEventListener('click', () => showRcptSubPane('receipts'));
+document.getElementById('rcpt-sub-inbox-btn').addEventListener('click',    () => showRcptSubPane('inbox'));
+
+document.getElementById('inbox-tbody').addEventListener('click', async e => {
+  const reviewBtn = e.target.closest('.inbox-review-btn');
+  const delBtn    = e.target.closest('.inbox-del-btn');
+  if (reviewBtn) {
+    const filename = reviewBtn.dataset.filename;
+    reviewBtn.disabled = true; reviewBtn.textContent = 'Opening…';
+    try {
+      const res  = await fetch(`/receipts/inbox/${encodeURIComponent(filename)}/review`, {method:'POST'});
+      const data = await res.json();
+      if (data.error) { showToast(data.error, 'danger'); reviewBtn.disabled = false; reviewBtn.textContent = 'Review'; return; }
+      processUploadResponse(data);
+    } catch(err) { showToast('Error: ' + err, 'danger'); reviewBtn.disabled = false; reviewBtn.textContent = 'Review'; }
+  }
+  if (delBtn) {
+    const filename = delBtn.dataset.filename;
+    if (!confirm(`Remove "${filename}" from inbox?`)) return;
+    await fetch(`/receipts/inbox/${encodeURIComponent(filename)}`, {method:'DELETE'});
+    loadInbox();
+  }
+});
+
+// Also refresh inbox badge when returning to receipts table
+const _origShowReceiptsTable = showReceiptsTable;
+// eslint-disable-next-line no-global-assign
+showReceiptsTable = function() {
+  _origShowReceiptsTable();
+  // Refresh inbox badge count in background
+  fetch('/receipts/inbox').then(r => r.json()).then(items => {
+    const b = document.getElementById('inbox-count-badge');
+    if (b) { b.textContent = items.length; b.style.display = items.length ? '' : 'none'; }
+  }).catch(() => {});
+};
 
 document.getElementById('rcpt-view-date-btn').addEventListener('click', () => {
   if (rcptViewMode === 'date') return;
@@ -1583,6 +1864,11 @@ saveBtn.addEventListener('click', async () => {
       data = await res.json();
       if (data.ok) {
         showToast(`Saved to ${data.file}`, 'success');
+        // Remove inbox source if this came from inbox review
+        if (S.inboxSource) {
+          fetch(`/receipts/inbox/${encodeURIComponent(S.inboxSource)}`, {method:'DELETE'}).catch(() => {});
+          S.inboxSource = null;
+        }
         setTimeout(showReceiptsTable, 1200);
       } else {
         showToast('Save failed', 'danger');
@@ -1784,19 +2070,39 @@ function renderByJob(container, entries, period) {
       <td class="text-muted small">${escHtml(e.memo||'')}</td>
     </tr>`;
   }).join('');
+  const custOpts = (S.customers || [])
+    .filter(c => c.customer_type !== 'personal')
+    .map(c => `<option value="${escHtml(c.key)}">${escHtml(c.property_label || c.key)}</option>`)
+    .join('');
   const makeBlock = (job, headerStyle, p) => {
     const rateHtml = (hoursShowDollars && job.rate != null)
-      ? `<div class="text-muted fw-normal" style="font-size:.75rem">@ $${job.rate}/hr = $${job.revenue.toFixed(2)}</div>`
+      ? `<div class="fw-semibold" style="font-size:.8rem;color:#059669">$${job.revenue.toFixed(2)}</div>
+         <div class="text-muted fw-normal" style="font-size:.7rem">@ $${job.rate}/hr</div>`
       : '';
+    const entryIds = escHtml(JSON.stringify(job.entries.map(e => e.entry_id).filter(Boolean)));
+    const reassignPanel = `
+      <div class="hours-reassign-panel" style="display:none">
+        <div class="d-flex align-items-center gap-2 px-2 py-2 flex-wrap" style="font-size:.8rem;background:#f0f4f8;border:1px solid #dee2e6;border-top:none">
+          <span class="text-muted">Reassign ${job.entries.length} entr${job.entries.length!==1?'ies':'y'} to:</span>
+          <select class="form-select form-select-sm reassign-sel" style="max-width:220px">
+            <option value="">— Select customer —</option>
+            ${custOpts}
+          </select>
+          <button class="btn btn-sm btn-primary reassign-confirm-btn" disabled
+                  data-period="${escHtml(p)}" data-entry-ids="${entryIds}">Move</button>
+          <button class="btn btn-sm btn-link text-muted p-0 reassign-cancel-btn" style="font-size:.8rem">Cancel</button>
+        </div>
+      </div>`;
     return `
     <div class="mb-3">
       <div class="hours-job-header" style="${headerStyle}">
-        <span>${escHtml(job.label)}</span>
+        <span>${escHtml(job.label)}<button class="btn btn-sm btn-outline-secondary py-0 px-1 ms-2 reassign-toggle-btn" style="font-size:.6rem;vertical-align:middle" title="Reassign all entries in this group">&#8644;</button></span>
         <div class="text-end">
           <div class="text-muted fw-normal">${job.total.toFixed(2)}h</div>
           ${rateHtml}
         </div>
       </div>
+      ${reassignPanel}
       <div class="card border-0 shadow-sm"
            style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
         <div class="table-responsive">
@@ -1819,10 +2125,119 @@ function renderByJob(container, entries, period) {
   if (Object.keys(unassignedJobs).length) {
     html += `<div class="fw-semibold small mt-4 mb-2" style="color:#b45309;border-top:2px solid #fbbf24;padding-top:.6rem">&#9888; Unassigned</div>`;
     Object.values(unassignedJobs).sort((a, b) => a.label.localeCompare(b.label)).forEach(job => {
-      html += makeBlock(job, 'background:#fffbeb;border-color:#fcd34d', period);
+      const entryIds = JSON.stringify(job.entries.map(e => e.entry_id).filter(Boolean));
+      const assignHtml = `
+        <div class="d-flex align-items-center gap-2 mt-2 flex-wrap" style="font-size:.8rem">
+          <select class="form-select form-select-sm bulk-assign-sel" style="max-width:200px">
+            <option value="">— Assign ${job.entries.length} entr${job.entries.length!==1?'ies':'y'} to… —</option>
+            ${custOpts}
+          </select>
+          <button class="btn btn-sm btn-warning bulk-assign-btn" disabled
+                  data-period="${escHtml(period)}"
+                  data-entry-ids="${escHtml(entryIds)}">Assign</button>
+        </div>`;
+      html += `
+      <div class="mb-3">
+        <div class="hours-job-header" style="background:#fffbeb;border-color:#fcd34d">
+          <span>${escHtml(job.label)}</span>
+          <div class="text-end">
+            <div class="text-muted fw-normal">${job.total.toFixed(2)}h</div>
+          </div>
+        </div>
+        ${assignHtml}
+        <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #fcd34d !important;border-top:none !important;">
+          <div class="table-responsive">
+            <table class="table table-sm table-hover hours-tbl align-middle mb-0" style="border-radius:0;table-layout:fixed">
+              <colgroup><col style="width:110px"><col style="width:120px"><col style="width:65px"><col></colgroup>
+              <thead><tr><th>Date</th><th>Time</th><th>Hours</th><th>Memo</th></tr></thead>
+              <tbody>${makeRows(job, period)}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
     });
   }
   container.innerHTML = html;
+
+  // Bulk assign controls
+  container.querySelectorAll('.bulk-assign-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const btn = sel.parentElement.querySelector('.bulk-assign-btn');
+      if (btn) btn.disabled = !sel.value;
+    });
+  });
+  container.querySelectorAll('.bulk-assign-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const p        = btn.dataset.period;
+      const entryIds = JSON.parse(btn.dataset.entryIds || '[]');
+      const sel      = btn.parentElement.querySelector('.bulk-assign-sel');
+      const custKey  = sel ? sel.value : '';
+      if (!custKey || !entryIds.length) return;
+      btn.disabled = true; btn.textContent = 'Assigning…';
+      try {
+        const res  = await fetch(`/hours/${p}/bulk-assign`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({entry_ids: entryIds, customer_key: custKey}),
+        });
+        const d = await res.json();
+        if (d.ok) {
+          showToast(`Assigned ${d.updated} entr${d.updated!==1?'ies':'y'}`, 'success');
+          delete hoursDataCache[p];
+          loadHoursMonthDetail(p);
+        } else {
+          showToast(d.error || 'Assign failed', 'danger');
+          btn.disabled = false; btn.textContent = 'Assign';
+        }
+      } catch(e) { showToast('Error: ' + e, 'danger'); btn.disabled = false; btn.textContent = 'Assign'; }
+    });
+  });
+
+  // Reassign controls (assigned customer groups)
+  container.querySelectorAll('.reassign-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const panel = btn.closest('.hours-job-header').nextElementSibling;
+      if (panel?.classList.contains('hours-reassign-panel'))
+        panel.style.display = panel.style.display === 'none' ? '' : 'none';
+    });
+  });
+  container.querySelectorAll('.reassign-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const btn = sel.closest('.hours-reassign-panel').querySelector('.reassign-confirm-btn');
+      if (btn) btn.disabled = !sel.value;
+    });
+  });
+  container.querySelectorAll('.reassign-cancel-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = btn.closest('.hours-reassign-panel');
+      if (panel) panel.style.display = 'none';
+    });
+  });
+  container.querySelectorAll('.reassign-confirm-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const p        = btn.dataset.period;
+      const entryIds = JSON.parse(btn.dataset.entryIds || '[]');
+      const sel      = btn.closest('.hours-reassign-panel').querySelector('.reassign-sel');
+      const custKey  = sel ? sel.value : '';
+      if (!custKey || !entryIds.length) return;
+      btn.disabled = true; btn.textContent = 'Moving…';
+      try {
+        const res = await fetch(`/hours/${p}/bulk-assign`, {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({entry_ids: entryIds, customer_key: custKey}),
+        });
+        const d = await res.json();
+        if (d.ok) {
+          showToast(`Moved ${d.updated} entr${d.updated!==1?'ies':'y'}`, 'success');
+          delete hoursDataCache[p];
+          loadHoursMonthDetail(p);
+        } else {
+          showToast(d.error || 'Move failed', 'danger');
+          btn.disabled = false; btn.textContent = 'Move';
+        }
+      } catch(err) { showToast('Error: ' + err, 'danger'); btn.disabled = false; btn.textContent = 'Move'; }
+    });
+  });
 }
 
 function renderByDay(container, entries, period) {
@@ -1835,18 +2250,30 @@ function renderByDay(container, entries, period) {
   const dayOrder = [];
   sorted.forEach(e => {
     const d = e.date || 'Unknown';
-    if (!days[d]) { days[d] = { entries: [], total: 0 }; dayOrder.push(d); }
+    if (!days[d]) { days[d] = { entries: [], total: 0, revenue: 0 }; dayOrder.push(d); }
     days[d].entries.push(e);
     days[d].total += parseFloat(e.hours) || 0;
+    if (hoursShowDollars && e.customer_key) {
+      const cust = S.custsByKey?.[e.customer_key];
+      days[d].revenue += (parseFloat(e.hours)||0) * parseFloat(cust?.hourly_rate || 70);
+    }
   });
-  const totalHours = sorted.reduce((s, e) => s + (parseFloat(e.hours)||0), 0);
+  const totalHours   = sorted.reduce((s, e) => s + (parseFloat(e.hours)||0), 0);
+  const totalRevenue = hoursShowDollars ? Object.values(days).reduce((s, d) => s + d.revenue, 0) : 0;
+  const revSummary   = hoursShowDollars
+    ? `<div class="fw-semibold text-success" style="font-size:.85rem">$${totalRevenue.toFixed(2)} est. labor</div>` : '';
   let html = `
     <div class="d-flex justify-content-between align-items-center mb-3 pt-1">
       <span class="text-muted small">${sorted.length} entr${sorted.length!==1?'ies':'y'}</span>
-      <span class="fw-semibold text-primary">${totalHours.toFixed(2)}h total</span>
+      <div class="text-end">
+        <div class="fw-semibold text-primary">${totalHours.toFixed(2)}h total</div>
+        ${revSummary}
+      </div>
     </div>`;
   dayOrder.forEach(date => {
     const day = days[date];
+    const dollarHeader = hoursShowDollars
+      ? `<span class="fw-semibold ms-3" style="font-size:.8rem;color:#059669">$${day.revenue.toFixed(2)}</span>` : '';
     const rows = day.entries.map(e => {
       const eid      = escHtml(e.entry_id || '');
       const calc     = calcHoursFromTimes(e.in_time, e.out_time);
@@ -1855,29 +2282,38 @@ function renderByDay(container, entries, period) {
       const hrsTip   = mismatch ? ` title="Punch times suggest ${calc.toFixed(2)}h"` : '';
       const unassignBadge = !e.customer_key
         ? ' <span class="badge bg-warning text-dark fw-normal ms-1" style="font-size:.6rem">unassigned</span>' : '';
+      const cust      = e.customer_key ? S.custsByKey?.[e.customer_key] : null;
+      const custLabel = cust ? (cust.property_label || cust.key) : (e.property_label || e.job_raw || '—');
+      const rate      = cust ? parseFloat(cust.hourly_rate || 70) : null;
+      const revenue   = (rate != null) ? (parseFloat(e.hours)||0) * rate : null;
+      const rateCells = hoursShowDollars
+        ? `<td class="text-muted small" style="width:72px;white-space:nowrap">${rate != null ? `$${rate.toFixed(0)}/hr` : '—'}</td>
+           <td class="fw-semibold small" style="width:72px;color:#059669;white-space:nowrap">${revenue != null ? `$${revenue.toFixed(2)}` : '—'}</td>` : '';
       return `<tr class="hours-entry-row" data-period="${escHtml(period||'')}" data-entry-id="${eid}" title="Click to edit" style="cursor:pointer">
-        <td class="fw-semibold small">${escHtml((e.customer_key && S.customers[e.customer_key]) ? S.customers[e.customer_key].property_label : (e.property_label || e.job_raw || '—'))}${unassignBadge}</td>
+        <td class="fw-semibold small">${escHtml(custLabel)}${unassignBadge}</td>
         <td class="text-muted small" style="width:120px">${fmtTimeCell(e.in_time, e.out_time)}</td>
         <td class="${hrsClass} small" style="width:65px;white-space:nowrap"${hrsTip}>${(parseFloat(e.hours)||0).toFixed(2)}h</td>
+        ${rateCells}
         <td class="text-muted small">${escHtml(e.memo||'')}</td>
       </tr>`;
     }).join('');
+    const dollarColHeaders = hoursShowDollars ? '<th style="width:72px">Rate</th><th style="width:72px">$</th>' : '';
+    const dollarCols       = hoursShowDollars ? '<col style="width:72px"><col style="width:72px">' : '';
     html += `
       <div class="mb-3">
         <div class="hours-job-header">
           <span>${escHtml(date)}</span>
-          <span class="text-muted fw-normal">${day.total.toFixed(2)}h</span>
+          <span><span class="text-muted fw-normal">${day.total.toFixed(2)}h</span>${dollarHeader}</span>
         </div>
         <div class="card border-0 shadow-sm"
              style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
           <div class="table-responsive">
             <table class="table table-sm table-hover hours-tbl align-middle mb-0" style="border-radius:0;table-layout:fixed">
               <colgroup>
-                <col><col style="width:120px"><col style="width:65px"><col>
+                <col><col style="width:120px"><col style="width:65px">${dollarCols}<col>
               </colgroup>
               <thead><tr>
-                <th>Job / Property</th><th>Time</th>
-                <th>Hours</th><th>Memo</th>
+                <th>Job / Property</th><th>Time</th><th>Hours</th>${dollarColHeaders}<th>Memo</th>
               </tr></thead>
               <tbody>${rows}</tbody>
             </table>
@@ -1930,20 +2366,31 @@ function renderHoursTable() {
     hoursTbody.appendChild(hdr);
     buildCustomerSelect(hdr.querySelector('.hours-job-sel'), job.customer_key, ['personal'], true);
 
-    // Entry detail rows
+    // Entry detail rows — inline-editable
     job.indices.forEach(i => {
       const e = entries[i];
       const timeStr = fmtTimeCell(e.in_time, e.out_time);
       const calc     = calcHoursFromTimes(e.in_time, e.out_time);
       const mismatch = calc !== null && Math.abs(calc - (parseFloat(e.hours)||0)) > 0.05;
       const hrsClass = mismatch ? 'text-danger fw-bold' : 'text-muted';
-      const hrsTip   = mismatch ? ` title="Punch times suggest ${calc.toFixed(2)}h"` : '';
+      const hrsTip   = mismatch ? ` title="Punch times suggest ${calc.toFixed(2)}h — click hours to edit"` : '';
       const det = document.createElement('tr');
+      det.dataset.entryIdx = i;
       det.innerHTML = `
-        <td class="ps-4 text-muted small" style="white-space:nowrap">${escHtml(e.date||'')}</td>
+        <td class="ps-4 small" style="white-space:nowrap">
+          <input type="date" class="form-control form-control-sm py-0 hours-edit-date"
+                 style="width:130px;font-size:.78rem" value="${escHtml(e.date||'')}">
+        </td>
         <td class="text-muted small">${timeStr}</td>
-        <td class="${hrsClass} small" style="white-space:nowrap"${hrsTip}>${(parseFloat(e.hours)||0).toFixed(2)}h</td>
-        <td class="text-muted small">${escHtml(e.memo||'')}</td>`;
+        <td class="${hrsClass} small" style="white-space:nowrap"${hrsTip}>
+          <input type="number" class="form-control form-control-sm py-0 hours-edit-hrs"
+                 style="width:62px;font-size:.78rem" step="0.25" min="0" max="24"
+                 value="${(parseFloat(e.hours)||0).toFixed(2)}">
+        </td>
+        <td class="text-muted small">
+          <input type="text" class="form-control form-control-sm py-0 hours-edit-memo"
+                 style="font-size:.78rem" value="${escHtml(e.memo||'')}" placeholder="memo">
+        </td>`;
       hoursTbody.appendChild(det);
     });
   });
@@ -2279,8 +2726,30 @@ document.getElementById('he-delete-btn').addEventListener('click', async () => {
   }
 });
 
+function syncHoursEdits() {
+  hoursTbody.querySelectorAll('tr[data-entry-idx]').forEach(row => {
+    const i = parseInt(row.dataset.entryIdx);
+    if (isNaN(i) || !S.hoursEntries[i]) return;
+    const dateInp = row.querySelector('.hours-edit-date');
+    const hrsInp  = row.querySelector('.hours-edit-hrs');
+    const memoInp = row.querySelector('.hours-edit-memo');
+    if (dateInp) S.hoursEntries[i].date  = dateInp.value;
+    if (hrsInp)  S.hoursEntries[i].hours = parseFloat(hrsInp.value) || 0;
+    if (memoInp) S.hoursEntries[i].memo  = memoInp.value;
+  });
+  // Refresh totals display
+  const total = S.hoursEntries.reduce((s, e) => s + (parseFloat(e.hours)||0), 0);
+  if (hoursTotalDisplay) hoursTotalDisplay.textContent = total.toFixed(2) + 'h';
+}
+
+// Live total update when hours inputs change
+hoursTbody.addEventListener('input', e => {
+  if (e.target.classList.contains('hours-edit-hrs')) syncHoursEdits();
+});
+
 hoursSaveBtn.addEventListener('click', async () => {
   if (!S.hoursEntries.length) { showToast('No entries to save.','danger'); return; }
+  syncHoursEdits();
   hoursSaveBtn.disabled    = true;
   hoursSaveBtn.textContent = 'Saving…';
   try {
@@ -2327,7 +2796,22 @@ function fmtInvDate(iso) {
   return d.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 }
 
+let invNetDays = 20;
+
+async function loadInvSettings() {
+  try {
+    const res  = await fetch('/invoices/settings');
+    const d    = await res.json();
+    invNetDays = d.net_days || 20;
+    const btn  = document.getElementById('inv-net-days-btn');
+    if (btn) btn.textContent = `Net${invNetDays} days`;
+    const inp  = document.getElementById('inv-net-days-input');
+    if (inp) inp.value = invNetDays;
+  } catch(e) {}
+}
+
 async function loadInvoicesMainView() {
+  await loadInvSettings();
   try {
     const res  = await fetch('/invoices');
     const data = await res.json();
@@ -2343,14 +2827,15 @@ async function loadInvoicesMainView() {
     const activePeriod = (lastActiveInvPeriod && data.some(h => h.period === lastActiveInvPeriod))
                          ? lastActiveInvPeriod : newestPeriod;
     invMonthTabs.innerHTML = data.map(h => {
-      const badge = h.draft  ? `<span class="badge bg-secondary ms-1" style="font-size:.6rem">${h.draft}d</span>` : '';
-      const sbadge = h.sent  ? `<span class="badge bg-primary ms-1"   style="font-size:.6rem">${h.sent}s</span>`  : '';
-      const pbadge = h.paid  ? `<span class="badge bg-success ms-1"   style="font-size:.6rem">${h.paid}p</span>`  : '';
+      const badge  = h.draft   ? `<span class="badge bg-secondary ms-1" style="font-size:.6rem">${h.draft}d</span>`    : '';
+      const sbadge = h.sent    ? `<span class="badge bg-primary ms-1"   style="font-size:.6rem">${h.sent}s</span>`     : '';
+      const pbadge = h.paid    ? `<span class="badge bg-success ms-1"   style="font-size:.6rem">${h.paid}p</span>`     : '';
+      const obadge = h.overdue ? `<span class="badge bg-danger ms-1" style="font-size:.6rem">${h.overdue}!</span>` : '';
       return `<li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
                 data-bs-toggle="tab" data-bs-target="#inv-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
-          ${formatPeriodLabel(h.period)}${badge}${sbadge}${pbadge}
+          ${formatPeriodLabel(h.period)}${badge}${sbadge}${pbadge}${obadge}
         </button>
       </li>`;
     }).join('');
@@ -2386,8 +2871,9 @@ async function loadInvPeriod(period) {
 const STATUS_ORDER = ['draft', 'sent', 'paid'];
 
 function invIsOverdue(inv) {
-  return inv.status === 'sent' && inv.sent_at &&
-    (Date.now() - new Date(inv.sent_at).getTime()) > 15 * 86400000;
+  if (inv.status !== 'sent' || !inv.sent_at) return false;
+  if (inv.due_date) return Date.now() > new Date(inv.due_date + 'T23:59:59').getTime();
+  return (Date.now() - new Date(inv.sent_at).getTime()) > (invNetDays || 20) * 86400000;
 }
 
 function renderInvList(container, period, invs) {
@@ -2405,10 +2891,11 @@ function renderInvList(container, period, invs) {
   });
 
   // Subtotals
-  const sub = { draft: {n:0, t:0}, sent: {n:0, t:0}, paid: {n:0, t:0} };
+  const sub = { draft: {n:0, t:0}, sent: {n:0, t:0}, paid: {n:0, t:0}, overdue: {n:0, t:0} };
   invs.forEach(inv => {
     const s = inv.status || 'draft';
     if (sub[s]) { sub[s].n++; sub[s].t += inv.total || 0; }
+    if (invIsOverdue(inv)) { sub.overdue.n++; sub.overdue.t += inv.total || 0; }
   });
   const subtotalHtml = `
     <div class="d-flex gap-4 justify-content-end mb-3 pt-1" style="font-size:.82rem">
@@ -2421,6 +2908,9 @@ function renderInvList(container, period, invs) {
       <span><span class="badge bg-success me-1">${sub.paid.n}</span>
         <span class="text-muted">Paid</span>
         <span class="fw-semibold ms-1">$${sub.paid.t.toFixed(2)}</span></span>
+      <span><span class="badge bg-danger me-1">${sub.overdue.n}</span>
+        <span class="text-muted">Overdue</span>
+        <span class="fw-semibold ms-1 text-danger">$${sub.overdue.t.toFixed(2)}</span></span>
     </div>`;
 
   if (!filtered.length) {
@@ -2436,10 +2926,14 @@ function renderInvList(container, period, invs) {
     const statusKey = inv.status || 'draft';
     const overdue   = invIsOverdue(inv);
     const overdueBadge = overdue
-      ? ' <span class="badge bg-warning text-dark" style="font-size:.6rem">Overdue</span>' : '';
+      ? ' <span class="badge bg-danger" style="font-size:.6rem">Overdue</span>' : '';
+    const dueMs    = inv.due_date
+      ? new Date(inv.due_date + 'T23:59:59').getTime()
+      : inv.sent_at ? new Date(inv.sent_at).getTime() + (invNetDays || 20) * 86400000 : 0;
+    const daysOver = overdue ? Math.ceil((Date.now() - dueMs) / 86400000) : 0;
     const historyId  = `inv-hist-${escHtml(inv.invoice_id)}`;
     const corrBadge  = inv.corrects
-      ? ` <span class="badge bg-danger inv-hist-toggle" style="font-size:.6rem;cursor:pointer"
+      ? ` <span class="badge inv-hist-toggle" style="font-size:.6rem;cursor:pointer;background:#f97316"
               data-period="${escHtml(period)}" data-id="${escHtml(inv.invoice_id)}"
               title="Click to see version history">CORRECTED &#9660;</span>` : '';
 
@@ -2450,29 +2944,30 @@ function renderInvList(container, period, invs) {
       const isPast  = i < curIdx;
       const label   = s.charAt(0).toUpperCase() + s.slice(1);
       let cls;
-      if (isCur)       cls = s === 'draft' ? 'btn-secondary' : s === 'sent' ? 'btn-primary' : 'btn-success';
-      else if (isPast) cls = s === 'draft' ? 'btn-secondary' : s === 'sent' ? 'btn-primary' : 'btn-success';
-      else             cls = s === 'draft' ? 'btn-outline-secondary' : s === 'sent' ? 'btn-outline-primary' : 'btn-outline-success';
-      const dis = isCur ? ' disabled' : '';
+      if (isPast || isCur) cls = s === 'draft' ? 'btn-secondary' : s === 'sent' ? 'btn-primary' : 'btn-success';
+      else                 cls = s === 'draft' ? 'btn-inv-future-secondary' : s === 'sent' ? 'btn-inv-future-primary' : 'btn-inv-future-success';
+      const dis = isCur ? ' style="pointer-events:none"' : '';
       return `<button class="btn btn-sm ${cls}"${dis}
                 onclick="setInvStatus('${escHtml(period)}','${escHtml(inv.invoice_id)}','${s}','${escHtml(statusKey)}')">${label}</button>`;
     }).join('');
 
-    const regenBtn = `<button class="btn btn-sm btn-outline-secondary"
+    const regenBtn = `<button class="btn btn-sm btn-secondary"
       onclick="regenInvoice('${escHtml(period)}','${escHtml(inv.invoice_id)}','${escHtml(inv.customer_key)}')"
       title="Regenerate from current hours &amp; expenses">&#8635; Regen</button>`;
     const deleteBtn = statusKey === 'draft'
       ? `<button class="btn btn-sm btn-outline-danger"
            onclick="deleteInvoice('${escHtml(period)}','${escHtml(inv.invoice_id)}')">&#128465;</button>` : '';
+    const emailAddr = inv.bill_to_email || S.custsByKey?.[inv.customer_key]?.email || '';
 
     html += `
     <div class="col-12 col-md-6 col-xl-4" id="inv-card-${escHtml(inv.invoice_id)}">
-      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#fbbf24' : ''}">
+      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#dc3545' : ''}">
         <div class="card-body pb-2">
           <div class="d-flex justify-content-between align-items-start mb-1">
             <div>
-              <div class="fw-semibold" style="font-size:.95rem">${escHtml(inv.customer_type === 'rental_advisor' && inv.property_label ? inv.property_label : inv.bill_to_name)}</div>
-              <div class="text-muted" style="font-size:.75rem">${escHtml(inv.invoice_id)}${corrBadge}${inv.customer_type === 'rental_advisor' && inv.property_label ? ' &nbsp;&middot;&nbsp; ' + escHtml(inv.bill_to_name) : ''}</div>
+              <div class="fw-semibold" style="font-size:.95rem">${escHtml(inv.bill_to_name)}</div>
+              ${inv.property_label ? `<div class="text-muted" style="font-size:.82rem"><strong>Property:</strong> ${escHtml(inv.property_label)}</div>` : ''}
+              <div class="text-muted" style="font-size:.75rem"><strong>Invoice #:</strong> ${escHtml(inv.invoice_id)}${corrBadge}</div>
             </div>
             <div class="text-end">
               ${STATUS_BADGE[statusKey]}${overdueBadge}
@@ -2480,14 +2975,15 @@ function renderInvList(container, period, invs) {
             </div>
           </div>
           <div class="text-muted" style="font-size:.78rem;line-height:1.7">
-            ${inv.labor_entries.length} labor entr${inv.labor_entries.length!==1?'ies':'y'} &nbsp;·&nbsp;
-            $${inv.labor_subtotal.toFixed(2)} labor
-            ${inv.materials_subtotal > 0 ? `&nbsp;·&nbsp; $${inv.materials_subtotal.toFixed(2)} materials` : ''}
+            <div>${inv.labor_entries.length} labor entr${inv.labor_entries.length!==1?'ies':'y'} &nbsp;·&nbsp; $${inv.labor_subtotal.toFixed(2)} labor</div>
+            ${inv.material_entries.length > 0 ? `<div>${inv.material_entries.length} material entr${inv.material_entries.length!==1?'ies':'y'} &nbsp;·&nbsp; $${inv.materials_subtotal.toFixed(2)} mtrls</div>` : ''}
           </div>
-          <div class="text-muted mt-1" style="font-size:.75rem">
-            Created ${fmtInvDate(inv.created_at)}
-            ${inv.sent_at ? `&nbsp;·&nbsp; Sent ${fmtInvDate(inv.sent_at)}` : ''}
-            ${inv.paid_at ? `&nbsp;·&nbsp; Paid ${fmtInvDate(inv.paid_at)}` : ''}
+          <div class="d-flex flex-column gap-1 mt-2" style="font-size:.72rem">
+            <div><span class="badge bg-secondary me-1" style="font-size:.55rem;vertical-align:middle">Created</span>${fmtInvDate(inv.created_at)}</div>
+            ${inv.sent_at ? `<div><span class="badge bg-primary me-1" style="font-size:.55rem;vertical-align:middle">Sent</span>${fmtInvDate(inv.sent_at)}</div>` : ''}
+            ${inv.due_date && statusKey !== 'draft' ? `<div><span class="badge bg-dark me-1" style="font-size:.55rem;vertical-align:middle">Due</span>${fmtInvDate(inv.due_date)}</div>` : ''}
+            ${inv.paid_at ? `<div><span class="badge bg-success me-1" style="font-size:.55rem;vertical-align:middle">Paid</span>${fmtInvDate(inv.paid_at)}</div>` : ''}
+            ${overdue ? `<div><span class="badge bg-danger me-1" style="font-size:.55rem;vertical-align:middle">Overdue</span>${daysOver}d past due</div>` : ''}
           </div>
           <div id="${historyId}" style="display:none"></div>
         </div>
@@ -2497,6 +2993,11 @@ function renderInvList(container, period, invs) {
             <div class="d-flex gap-1">
               <a href="/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print" target="_blank"
                  class="btn btn-sm btn-dark">&#128438;</a>
+              ${emailAddr
+                ? `<button class="btn btn-sm btn-primary"
+                     onclick="openEmailModal('${escHtml(period)}','${escHtml(inv.invoice_id)}','${escHtml(emailAddr)}','${escHtml(inv.bill_to_name)}')"
+                     title="Email invoice to ${escHtml(emailAddr)}">&#9993;</button>`
+                : `<button class="btn btn-sm btn-primary" disabled title="No email on file">&#9993;</button>`}
               ${regenBtn}
               ${deleteBtn}
             </div>
@@ -2574,6 +3075,42 @@ async function regenInvoice(period, invoiceId, customerKey) {
   } catch(e) { showToast('Error: ' + e, 'danger'); }
 }
 
+// ── Email invoice ──────────────────────────────────────────────
+let _emailCtx = {};   // { period, invoiceId } set when modal opens
+
+function openEmailModal(period, invoiceId, email, customerName) {
+  _emailCtx = { period, invoiceId };
+  document.getElementById('inv-email-recipient').textContent = email;
+  document.getElementById('inv-email-subject').textContent =
+    `Invoice ${invoiceId} – ${customerName}`;
+  new bootstrap.Modal(document.getElementById('invEmailModal')).show();
+}
+
+document.getElementById('inv-email-send-btn').addEventListener('click', async () => {
+  const { period, invoiceId } = _emailCtx;
+  const modal = bootstrap.Modal.getInstance(document.getElementById('invEmailModal'));
+  const btn   = document.getElementById('inv-email-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const res  = await fetch(`/invoices/${period}/${invoiceId}/email`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      modal.hide();
+      showToast(`Invoice emailed to ${data.sent_to}`, 'success');
+      await loadInvPeriod(period);
+      await loadInvoicesMainView();
+    } else {
+      showToast(data.error || 'Email failed', 'danger');
+    }
+  } catch(e) {
+    showToast('Error: ' + e, 'danger');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Send &#9993;';
+  }
+});
+
 document.getElementById('inv-generate-btn').addEventListener('click', async () => {
   const select = document.getElementById('inv-gen-period-select');
   try {
@@ -2602,7 +3139,7 @@ document.getElementById('inv-gen-confirm-btn').addEventListener('click', async (
   try {
     const res  = await fetch(`/invoices/${period}/generate`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({}),
+      body: JSON.stringify({net_days: invNetDays}),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -2618,9 +3155,45 @@ document.getElementById('inv-gen-confirm-btn').addEventListener('click', async (
   } catch(e) {
     showToast('Error: ' + e, 'danger');
   } finally {
-    btn.disabled = false; btn.innerHTML = '&#9889; Generate Invoices';
+    btn.disabled = false; btn.innerHTML = 'Generate Invoices &#9889;';
   }
 });
+
+// Net days pill button — click to edit inline
+(function() {
+  const btn = document.getElementById('inv-net-days-btn');
+  const inp = document.getElementById('inv-net-days-input');
+
+  function showBtn(n) {
+    inp.classList.remove('visible');
+    btn.classList.remove('editing');
+    btn.textContent = `Net${n} days`;
+  }
+
+  async function commit() {
+    const val = Math.max(1, parseInt(inp.value) || invNetDays);
+    invNetDays = val;
+    showBtn(val);
+    await fetch('/invoices/settings', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({net_days: val}),
+    });
+  }
+
+  btn.addEventListener('click', () => {
+    inp.value = invNetDays;
+    btn.classList.add('editing');
+    inp.classList.add('visible');
+    inp.focus();
+    inp.select();
+  });
+
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape') { showBtn(invNetDays); }
+  });
+})();
 
 // Delegated handler for CORRECTED badge history toggle
 invMonthContent.addEventListener('click', async e => {
@@ -2713,7 +3286,356 @@ document.getElementById('inv-filter-group').addEventListener('click', e => {
 document.getElementById('tab-invoices-btn').addEventListener('show.bs.tab', loadInvoicesMainView);
 
 // ═══════════════════════════════════════════════════════════════
-// 7. BOOT
+// 7. TASKS
+// ═══════════════════════════════════════════════════════════════
+
+let tasksCache     = [];
+let taskView       = 'job';   // 'job' | 'priority' | 'date'
+let taskArchiveView = 'job';
+let taskCalYear    = new Date().getFullYear();
+let taskCalMonth   = new Date().getMonth();  // 0-based
+let _taskEditId    = null;
+
+const PRIORITY_ORDER = { high: 0, medium: 1, low: 2 };
+const PRIORITY_LABEL = { high: 'High', medium: 'Medium', low: 'Low' };
+const PRIORITY_CLS   = { high: 'danger', medium: 'warning', low: 'primary' };
+
+async function loadTasks() {
+  const res = await fetch('/tasks');
+  tasksCache = await res.json();
+}
+
+function fmtTaskDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return `${parseInt(m)}/${parseInt(d)}/${y}`;
+}
+
+function taskDaysUntil(due) {
+  if (!due) return null;
+  const diff = new Date(due + 'T00:00:00').getTime() - new Date().setHours(0,0,0,0);
+  return Math.ceil(diff / 86400000);
+}
+
+function taskDueBadge(task) {
+  if (!task.due_date) return '';
+  const d = taskDaysUntil(task.due_date);
+  if (d < 0)  return `<span class="badge bg-danger ms-1" style="font-size:.6rem">${Math.abs(d)}d overdue</span>`;
+  if (d === 0) return `<span class="badge bg-danger ms-1" style="font-size:.6rem">Due today</span>`;
+  return `<span class="badge bg-light text-dark border ms-1" style="font-size:.6rem">Due ${fmtTaskDate(task.due_date)}</span>`;
+}
+
+function taskUrgencyBadge(task) {
+  if (!task.due_date) return '';
+  const d = taskDaysUntil(task.due_date);
+  if (d > 0 && d <= 3) return `<span class="badge ms-1" style="font-size:.6rem;background:#fef3c7;color:#92400e;border:1px solid #fde68a">Due in ${d}d</span>`;
+  return '';
+}
+
+function renderTaskCard(task, showComplete = true) {
+  const priCls  = PRIORITY_CLS[task.priority] || 'secondary';
+  const hoursEl = task.hours_estimate
+    ? `<span class="text-muted ms-2" style="font-size:.78rem">&#9200; ${task.hours_estimate}h</span>` : '';
+  const jobEl   = task.job_label
+    ? `<div class="text-muted" style="font-size:.78rem">${escHtml(task.job_label)}</div>` : '';
+  const completeBtn = showComplete
+    ? `<button class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:.75rem"
+         onclick="completeTask('${task.task_id}')">&#10003; Done</button>` : '';
+  return `
+    <div class="card mb-2 task-card priority-${task.priority}" data-task-id="${escHtml(task.task_id)}">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div style="min-width:0">
+            ${jobEl}
+            <div style="font-size:.88rem">${escHtml(task.description)}</div>
+            <div class="d-flex align-items-center flex-wrap mt-1">
+              <span class="badge me-1" style="font-size:.6rem;background:${task.priority==='high'?'#dc2626':task.priority==='medium'?'#f97316':'#3b82f6'};color:#fff">${PRIORITY_LABEL[task.priority]}</span>
+              ${taskDueBadge(task)}
+              ${hoursEl}
+              ${taskUrgencyBadge(task)}
+            </div>
+          </div>
+          <div class="d-flex gap-1 ms-2 flex-shrink-0">
+            ${completeBtn}
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem"
+              onclick="openTaskModal('${task.task_id}')">&#9998;</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderTaskList() {
+  const open = tasksCache.filter(t => t.status !== 'complete');
+  const container = document.getElementById('task-list-container');
+  if (!open.length) {
+    container.innerHTML = '<p class="text-muted small py-3">No open tasks. Click <strong>+ Task</strong> to add one.</p>';
+    return;
+  }
+  let html = '';
+  if (taskView === 'job') {
+    const groups = {};
+    open.forEach(t => {
+      const key = t.job_label || '— No job assigned —';
+      (groups[key] = groups[key] || []).push(t);
+    });
+    Object.keys(groups).sort().forEach(g => {
+      html += `<div class="task-group-hdr">${escHtml(g)}</div>`;
+      groups[g].sort((a,b) => (a.due_date||'9999') < (b.due_date||'9999') ? -1 : 1)
+               .forEach(t => { html += renderTaskCard(t); });
+    });
+  } else if (taskView === 'priority') {
+    ['high','medium','low'].forEach(p => {
+      const pts = open.filter(t => t.priority === p);
+      if (!pts.length) return;
+      html += `<div class="task-group-hdr">${PRIORITY_LABEL[p]} Priority</div>`;
+      pts.sort((a,b) => (a.due_date||'9999') < (b.due_date||'9999') ? -1 : 1)
+         .forEach(t => { html += renderTaskCard(t); });
+    });
+  } else {
+    open.slice().reverse().forEach(t => { html += renderTaskCard(t); });
+  }
+  container.innerHTML = html;
+}
+
+function renderArchiveCard(t) {
+  const completedOn = t.completed_at ? fmtTaskDate(t.completed_at.split('T')[0]) : '';
+  const hoursEl = t.hours_estimate
+    ? `<span class="text-muted ms-2" style="font-size:.78rem">&#9200; ${t.hours_estimate}h</span>` : '';
+  return `
+    <div class="card mb-2 task-card priority-${t.priority}" data-task-id="${escHtml(t.task_id)}">
+      <div class="card-body py-2 px-3">
+        <div class="d-flex justify-content-between align-items-start">
+          <div style="min-width:0">
+            ${t.job_label ? `<div class="text-muted" style="font-size:.78rem">${escHtml(t.job_label)}</div>` : ''}
+            <div class="text-muted text-decoration-line-through" style="font-size:.88rem">${escHtml(t.description)}</div>
+            <div class="d-flex align-items-center flex-wrap mt-1">
+              ${completedOn ? `<span class="badge bg-light text-dark border me-1" style="font-size:.6rem">Completed ${completedOn}</span>` : ''}
+              ${hoursEl}
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2 ms-2" style="font-size:.72rem"
+            onclick="deleteTask('${t.task_id}')">&#128465;</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderTaskArchive() {
+  const done = tasksCache.filter(t => t.status === 'complete');
+  const container = document.getElementById('task-archive-container');
+  if (!done.length) {
+    container.innerHTML = '<p class="text-muted small py-3">No completed tasks yet.</p>';
+    return;
+  }
+  let html = '';
+  if (taskArchiveView === 'job') {
+    const groups = {};
+    done.forEach(t => {
+      const key = t.job_label || '— No job assigned —';
+      (groups[key] = groups[key] || []).push(t);
+    });
+    Object.keys(groups).sort().forEach(g => {
+      html += `<div class="task-group-hdr">${escHtml(g)}</div>`;
+      groups[g].sort((a, b) => (b.completed_at || '') > (a.completed_at || '') ? -1 : 1)
+               .forEach(t => { html += renderArchiveCard(t); });
+    });
+  } else {
+    done.slice().sort((a, b) => (b.completed_at || '') > (a.completed_at || '') ? -1 : 1)
+        .forEach(t => { html += renderArchiveCard(t); });
+  }
+  container.innerHTML = html;
+}
+
+function renderTaskCalendar() {
+  const heading = document.getElementById('task-cal-heading');
+  const container = document.getElementById('task-cal-container');
+  const monthName = new Date(taskCalYear, taskCalMonth, 1)
+    .toLocaleString('default', { month: 'long', year: 'numeric' });
+  heading.textContent = monthName;
+
+  const open = tasksCache.filter(t => t.status !== 'complete' && t.due_date);
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  // Build a map: dateStr → [{ task, type }] where type = 'due' | 'work'
+  const dayMap = {};
+  const add = (ds, entry) => { (dayMap[ds] = dayMap[ds] || []).push(entry); };
+
+  open.forEach(t => {
+    add(t.due_date, { task: t, type: 'due' });
+    if (t.hours_estimate > 0) {
+      const workDays = Math.ceil(t.hours_estimate / 8);
+      const due = new Date(t.due_date + 'T00:00:00');
+      for (let i = 1; i <= workDays; i++) {
+        const d = new Date(due);
+        d.setDate(due.getDate() - i);
+        const ds = d.toISOString().split('T')[0];
+        add(ds, { task: t, type: 'work' });
+      }
+    }
+  });
+
+  // Grid
+  const firstDay = new Date(taskCalYear, taskCalMonth, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(taskCalYear, taskCalMonth + 1, 0).getDate();
+  const daysInPrev  = new Date(taskCalYear, taskCalMonth, 0).getDate();
+
+  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  let html = '<div class="task-cal-grid mb-2">';
+  DOW.forEach(d => { html += `<div class="task-cal-dow">${d}</div>`; });
+
+  // Prev month filler
+  for (let i = 0; i < firstDay; i++) {
+    const day = daysInPrev - firstDay + 1 + i;
+    html += `<div class="task-cal-day other-month"><div class="task-cal-daynum">${day}</div></div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds  = `${taskCalYear}-${String(taskCalMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dt  = new Date(taskCalYear, taskCalMonth, d);
+    const isToday = dt.getTime() === today.getTime();
+    const chips = dayMap[ds] || [];
+    const hasOverdue = chips.some(c => c.type === 'due' && dt < today);
+    let cls = 'task-cal-day';
+    if (isToday)    cls += ' today';
+    if (hasOverdue) cls += ' has-overdue';
+    html += `<div class="${cls}"><div class="task-cal-daynum">${d}</div>`;
+    chips.forEach(({ task, type }) => {
+      const chipCls = type === 'work'
+        ? `task-cal-chip chip-work-${task.priority}`
+        : `task-cal-chip chip-due-${task.priority}`;
+      const label = type === 'work'
+        ? `&#9200; ${escHtml(task.description)}`
+        : escHtml(task.description);
+      html += `<div class="${chipCls}" title="${escHtml(task.description)}">${label}</div>`;
+    });
+    html += '</div>';
+  }
+
+  // Next month filler
+  const total = firstDay + daysInMonth;
+  const trail = total % 7 === 0 ? 0 : 7 - (total % 7);
+  for (let i = 1; i <= trail; i++) {
+    html += `<div class="task-cal-day other-month"><div class="task-cal-daynum">${i}</div></div>`;
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+async function completeTask(taskId) {
+  await fetch(`/tasks/${taskId}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ status: 'complete' }),
+  });
+  await loadTasks();
+  renderTaskList();
+  renderTaskArchive();
+  renderTaskCalendar();
+  showToast('Task completed', 'success');
+}
+
+async function deleteTask(taskId) {
+  if (!confirm('Delete this task permanently?')) return;
+  await fetch(`/tasks/${taskId}`, { method: 'DELETE' });
+  await loadTasks();
+  renderTaskArchive();
+  showToast('Task deleted', 'success');
+}
+
+function openTaskModal(taskId) {
+  _taskEditId = taskId || null;
+  const modal = document.getElementById('taskModal');
+  const task  = taskId ? tasksCache.find(t => t.task_id === taskId) : null;
+
+  document.getElementById('task-modal-title').textContent = task ? 'Edit Task' : 'New Task';
+
+  // Populate customer dropdown
+  const sel = document.getElementById('task-form-customer');
+  sel.innerHTML = '<option value="">— No specific job —</option>';
+  (S.customers || []).forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.key;
+    opt.textContent = c.label;
+    if (task && task.customer_key === c.key) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  document.getElementById('task-form-desc').value      = task?.description   || '';
+  document.getElementById('task-form-priority').value  = task?.priority      || 'medium';
+  document.getElementById('task-form-hours').value     = task?.hours_estimate || '';
+  document.getElementById('task-form-due').value       = task?.due_date      || '';
+  new bootstrap.Modal(modal).show();
+}
+
+document.getElementById('task-add-btn').addEventListener('click', () => openTaskModal(null));
+
+document.getElementById('task-modal-save').addEventListener('click', async () => {
+  const desc = document.getElementById('task-form-desc').value.trim();
+  if (!desc) { alert('Task description is required.'); return; }
+  const custKey  = document.getElementById('task-form-customer').value;
+  const custMeta = custKey ? (S.customers || []).find(c => c.key === custKey) : null;
+  const body = {
+    customer_key:   custKey,
+    job_label:      custMeta?.label || '',
+    description:    desc,
+    priority:       document.getElementById('task-form-priority').value,
+    hours_estimate: parseFloat(document.getElementById('task-form-hours').value) || null,
+    due_date:       document.getElementById('task-form-due').value || null,
+  };
+  const url    = _taskEditId ? `/tasks/${_taskEditId}` : '/tasks';
+  const method = _taskEditId ? 'PUT' : 'POST';
+  await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  bootstrap.Modal.getInstance(document.getElementById('taskModal')).hide();
+  await loadTasks();
+  renderTaskList();
+  renderTaskArchive();
+  renderTaskCalendar();
+  showToast(_taskEditId ? 'Task updated' : 'Task added', 'success');
+});
+
+// View toggle
+document.getElementById('task-view-group').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-tview]');
+  if (!btn) return;
+  taskView = btn.dataset.tview;
+  document.querySelectorAll('#task-view-group button').forEach(b => {
+    b.className = b === btn ? 'btn btn-dark' : 'btn btn-outline-secondary';
+  });
+  renderTaskList();
+});
+
+// Calendar nav
+document.getElementById('task-cal-prev').addEventListener('click', () => {
+  taskCalMonth--;
+  if (taskCalMonth < 0) { taskCalMonth = 11; taskCalYear--; }
+  renderTaskCalendar();
+});
+document.getElementById('task-cal-next').addEventListener('click', () => {
+  taskCalMonth++;
+  if (taskCalMonth > 11) { taskCalMonth = 0; taskCalYear++; }
+  renderTaskCalendar();
+});
+
+// Load on tab show
+document.getElementById('tab-tasks-btn').addEventListener('show.bs.tab', async () => {
+  await loadTasks();
+  renderTaskList();
+  renderTaskCalendar();
+});
+document.getElementById('task-sub-archive-btn').addEventListener('show.bs.tab', renderTaskArchive);
+
+document.getElementById('task-archive-view-group').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-aview]');
+  if (!btn) return;
+  taskArchiveView = btn.dataset.aview;
+  document.querySelectorAll('#task-archive-view-group button').forEach(b => {
+    b.className = b === btn ? 'btn btn-dark' : 'btn btn-outline-secondary';
+  });
+  renderTaskArchive();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 8. BOOT
 // ═══════════════════════════════════════════════════════════════
 loadAllCustomers().then(() => {
   loadCustomerTab();

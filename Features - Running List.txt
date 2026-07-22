@@ -1,0 +1,30 @@
+
+
+Future features:
+- email invoice option at print stage - using customer email address
+- receipts automated workflow: receipt scans land in a folder, trigger the app to grab, load in, wait in a pending position - move the files into different status folders
+
+- task list page - due date - schedule out tasks in a calendar UI
+- add toggle for color in invoice creation, or in the customer creation - customer setting
+
+- For multi-property group, and rental advisor group - group all invoices together (keep distance per property, but create a send all on single email option
+
+
+Claude reply:
+5. "To Review" sub-tab on the Receipts page
+Your instinct is right. I'd call it "Inbox" (or "To Review" is fine too — more explicit). Here's my recommendation:
+Structure: Two sub-tabs inside the Receipts tab pane:
+Receipts (existing table, renamed from the grey heading)
+Inbox — auto-imported, not yet reviewed
+The Inbox tab gets an orange badge count when there's anything in it (like the overdue badge we just built). When a user opens an Inbox receipt, edits it, and confirms — it writes to the expenses_YYYY_MM.json and disappears from Inbox into the Receipts table.
+On your cloud folder idea: I'd add a Reviewed folder on the cloud side. When an Inbox receipt is confirmed, the backend moves/copies the file there (or marks it via a manifest so the importer skips re-importing it). This prevents duplicates next time the cloud folder is scanned. That's the right architecture — a simple imported_manifest.json tracking file IDs already processed would also work without file moves.
+The orange badge on Inbox is the right signal — same 
+
+
+6. Email invoice button
+Great idea, very viable. My take:
+Pros: Removes the PDF-print-then-email manual step entirely. Auto-Sent status is the killer feature here — it's one less click and keeps the workflow tight.
+Architecture I'd recommend: Use Python's smtplib with a Gmail app password (or a Mailgun/Postmark free tier for reliability). The print template already renders the full invoice as HTML — you can send that directly as an HTML email body, no PDF generation needed. Attach nothing; the email is the invoice.
+UX: The button is btn-outline-primary with a mail icon, greyed/disabled if bill_to_email is empty. Clicking opens a small confirmation modal showing the recipient address, subject line preview (e.g. "Invoice 2025_124 — Handyman Services, June 2025"), and a Send button. On success: status auto-moves to Sent, toast confirms, sent_at is stamped.
+One consideration: You'll need somewhere to store SMTP credentials (not in the repo). A .env file that's already in .gitignore is the standard approach. Worth building — it's maybe 40 lines of Python and a modal.
+

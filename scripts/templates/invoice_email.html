@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;font-size:11pt;color:#111">
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0">
+  <tr><td align="center">
+    <table width="620" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:6px;overflow:hidden">
+
+      <!-- Banner -->
+      <tr><td style="background:#3a9078;color:#fff;font-size:15pt;font-weight:700;letter-spacing:3px;text-transform:uppercase;padding:12px 24px">
+        Small Jobs
+      </td></tr>
+
+      <!-- Month heading -->
+      <tr><td style="font-size:11pt;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#222;padding:14px 24px;border-bottom:2.5px solid #3a9078">
+        {{ inv.month_label }} &ndash; Handyman Services
+      </td></tr>
+
+      <!-- Header -->
+      <tr><td style="padding:20px 24px 0;border-bottom:2.5px solid #3a9078">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="vertical-align:top;width:60%">
+              <div style="font-size:13pt;font-weight:700">{{ inv.bill_to_name }}</div>
+              {% if inv.property_label %}
+              <div><strong>Property:</strong> {{ inv.property_label }}</div>
+              {% endif %}
+              <table cellpadding="0" cellspacing="0" style="margin-top:10px;font-size:9.5pt">
+                <tr><td style="color:#555;font-weight:600;padding-right:10px;white-space:nowrap">Invoice No.</td><td>{{ inv.invoice_id }}</td></tr>
+                <tr><td style="color:#555;font-weight:600;padding-right:10px;white-space:nowrap">Invoice Date:</td><td>{{ inv.invoice_date }}</td></tr>
+                {% if inv.due_date %}<tr><td style="color:#555;font-weight:600;padding-right:10px;white-space:nowrap">Due Date:</td><td>{{ inv.due_date }}</td></tr>{% endif %}
+                {% if inv.net_days %}<tr><td style="color:#555;font-weight:600;padding-right:10px;white-space:nowrap">Terms:</td><td>Net {{ inv.net_days }}</td></tr>{% endif %}
+              </table>
+            </td>
+            <td style="width:2px;background:#3a9078;vertical-align:stretch"></td>
+            <td style="vertical-align:top;padding-left:20px">
+              <div style="font-size:13pt;font-weight:700">Tom Smallwood</div>
+              <div>4868 Morningstar Lane</div>
+              <div>Tetonia, ID 83452</div>
+              <div>303-829-2016</div>
+            </td>
+          </tr>
+        </table>
+        <div style="height:14px"></div>
+      </td></tr>
+
+      <tr><td style="padding:20px 24px">
+
+        <!-- Labor section -->
+        <div style="background:#d8f0e9;font-weight:700;font-size:11pt;padding:5px 8px;border-left:4px solid #3a9078;margin-bottom:0">Labor</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
+          <thead>
+            <tr style="background:#3a9078;color:#fff;font-size:9.5pt">
+              <td style="padding:6px 8px;width:100px">Date</td>
+              <td style="padding:6px 8px">Description</td>
+              <td style="padding:6px 8px;text-align:right;width:60px">Hours</td>
+              <td style="padding:6px 8px;text-align:right;width:90px">Rate/hr</td>
+              <td style="padding:6px 8px;text-align:right;width:80px">Amount</td>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in inv.labor_entries %}
+            <tr style="{% if loop.index is even %}background:#d8f0e9;{% endif %}font-size:9.5pt">
+              <td style="padding:5px 8px">{{ e.date }}</td>
+              <td style="padding:5px 8px">{{ e.description or '' }}</td>
+              <td style="padding:5px 8px;text-align:right">{{ '%.2f'|format(e.hours) }}</td>
+              <td style="padding:5px 8px;text-align:right">${{ '%.2f'|format(e.rate) }}</td>
+              <td style="padding:5px 8px;text-align:right">${{ '%.2f'|format(e.amount) }}</td>
+            </tr>
+            {% endfor %}
+            <tr style="border-top:2px solid #3a9078;font-weight:600">
+              <td colspan="4" style="padding:5px 8px;text-align:right">Labor Subtotal</td>
+              <td style="padding:5px 8px;text-align:right">${{ '%.2f'|format(inv.labor_subtotal) }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        {% if inv.material_entries %}
+        <!-- Materials section -->
+        <div style="background:#d8f0e9;font-weight:700;font-size:11pt;padding:5px 8px;border-left:4px solid #3a9078;margin-bottom:0">Materials</div>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px">
+          <thead>
+            <tr style="background:#3a9078;color:#fff;font-size:9.5pt">
+              <td style="padding:6px 8px;width:100px">Date</td>
+              <td style="padding:6px 8px;width:140px">Vendor</td>
+              <td style="padding:6px 8px">Description</td>
+              <td style="padding:6px 8px;text-align:right;width:80px">Amount</td>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in inv.material_entries %}
+            <tr style="{% if loop.index is even %}background:#d8f0e9;{% endif %}font-size:9.5pt">
+              <td style="padding:5px 8px">{{ m.date }}</td>
+              <td style="padding:5px 8px">{{ m.vendor }}</td>
+              <td style="padding:5px 8px">{{ m.description }}</td>
+              <td style="padding:5px 8px;text-align:right">${{ '%.2f'|format(m.amount) }}</td>
+            </tr>
+            {% endfor %}
+            <tr style="border-top:2px solid #3a9078;font-weight:600">
+              <td colspan="3" style="padding:5px 8px;text-align:right">Materials Subtotal</td>
+              <td style="padding:5px 8px;text-align:right">${{ '%.2f'|format(inv.materials_subtotal) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        {% endif %}
+
+        <!-- Totals -->
+        <table align="right" cellpadding="0" cellspacing="0" style="border-collapse:collapse;min-width:240px">
+          <tr style="border-top:1px solid #c0ddd6">
+            <td style="padding:4px 8px;font-size:10pt">Invoice Subtotal</td>
+            <td style="padding:4px 8px;font-size:10pt;text-align:right">${{ '%.2f'|format(inv.invoice_subtotal) }}</td>
+          </tr>
+          {% if inv.other %}
+          <tr><td style="padding:4px 8px;font-size:10pt">Other</td>
+              <td style="padding:4px 8px;font-size:10pt;text-align:right">${{ '%.2f'|format(inv.other) }}</td></tr>
+          {% endif %}
+          {% if inv.deposit %}
+          <tr><td style="padding:4px 8px;font-size:10pt">Deposit Received</td>
+              <td style="padding:4px 8px;font-size:10pt;text-align:right">-${{ '%.2f'|format(inv.deposit) }}</td></tr>
+          {% endif %}
+          <tr style="background:#2b6e5a;color:#fff">
+            <td style="padding:6px 8px;font-size:11.5pt;font-weight:700">TOTAL</td>
+            <td style="padding:6px 8px;font-size:11.5pt;font-weight:700;text-align:right">${{ '%.2f'|format(inv.total) }}</td>
+          </tr>
+        </table>
+
+      </td></tr>
+
+      <!-- Footer -->
+      <tr><td style="padding:16px 24px 24px;border-top:1px solid #c0ddd6;font-size:9.5pt;color:#444">
+        Make all checks payable to <strong>Tom Smallwood</strong>
+      </td></tr>
+      <tr><td style="padding:0 24px 28px;text-align:center;font-weight:700;font-size:11pt">
+        Thank you for your business!
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
