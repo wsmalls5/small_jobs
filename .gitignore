@@ -1,8 +1,11 @@
 # ── Sensitive data — never commit ────────────────────────────
 customers_export.csv
-data/
 example_data/
 .env
+
+# Data folder — keep directory structure, ignore all file content
+data/**
+!data/**/.gitkeep
 
 # ── Python ────────────────────────────────────────────────────
 __pycache__/
