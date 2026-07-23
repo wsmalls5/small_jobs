@@ -387,6 +387,16 @@ def parse_hours_csv(content_bytes):
 def index():
     return render_template("small_jobs.html")
 
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory(str(Path(__file__).parent / "static"), "sw.js",
+                               mimetype="application/javascript")
+
+@app.route("/manifest.json")
+def manifest():
+    return send_from_directory(str(Path(__file__).parent / "static"), "manifest.json",
+                               mimetype="application/manifest+json")
+
 
 @app.route("/customers")
 def api_customers():
