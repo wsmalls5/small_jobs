@@ -2,12 +2,11 @@
 
 Future features:
 - email invoice option at print stage - using customer email address
+- - For multi-property group, and rental advisor group - group all invoices together (keep distance per property, but create a send all on single email option
+
 - receipts automated workflow: receipt scans land in a folder, trigger the app to grab, load in, wait in a pending position - move the files into different status folders
 
-- task list page - due date - schedule out tasks in a calendar UI
 - add toggle for color in invoice creation, or in the customer creation - customer setting
-
-- For multi-property group, and rental advisor group - group all invoices together (keep distance per property, but create a send all on single email option
 
 
 Claude reply:
