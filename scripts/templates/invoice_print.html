@@ -29,6 +29,18 @@
   .screen-bar button:hover { background: var(--mint-light); }
   .screen-bar span { font-size: 10pt; opacity: .85; }
 
+  /* ── Toast notification ── */
+  #print-toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    padding: 12px 20px; border-radius: 6px; font-size: 10pt; font-weight: 600;
+    color: #fff; opacity: 0; pointer-events: none;
+    transition: opacity .25s ease; z-index: 9999;
+  }
+  #print-toast.show { opacity: 1; pointer-events: auto; }
+  #print-toast.success { background: #059669; }
+  #print-toast.danger  { background: #dc2626; }
+  @media print { #print-toast { display: none; } }
+
   /* ── Page layout ── */
   .invoice-page { max-width: 850px; margin: 24px auto; padding: 0 24px; }
 
@@ -147,7 +159,17 @@
   <span>Invoice {{ inv.invoice_id }}{% if inv.corrects %} &nbsp;|&nbsp; Corrects: {{ inv.corrects }}{% endif %}</span>
 </div>
 
+<div id="print-toast"></div>
+
 <script>
+function showPrintToast(msg, type) {
+  const t = document.getElementById('print-toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.className = ''; }, 3500);
+}
+
 async function doEmail(btn) {
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Sending…';
@@ -155,14 +177,15 @@ async function doEmail(btn) {
     const res = await fetch('/invoices/{{ period }}/{{ inv.invoice_id }}/email', {method:'POST'});
     const d = await res.json();
     if (d.ok) {
-      btn.textContent = '✓ Sent to ' + d.sent_to;
-      btn.style.background = '#059669';
+      btn.textContent = orig;
+      btn.disabled = false;
+      showPrintToast('✓ Sent to ' + d.sent_to, 'success');
     } else {
-      alert(d.error || 'Email failed');
+      showPrintToast(d.error || 'Email failed', 'danger');
       btn.disabled = false; btn.textContent = orig;
     }
   } catch(e) {
-    alert('Error: ' + e);
+    showPrintToast('Error: ' + e, 'danger');
     btn.disabled = false; btn.textContent = orig;
   }
 }
