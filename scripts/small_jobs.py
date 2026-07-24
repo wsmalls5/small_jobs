@@ -665,7 +665,7 @@ def get_receipts_inbox():
             items.append({
                 "filename": f.name,
                 "size":     stat.st_size,
-                "modified": stat.st_mtime,
+                "added":    stat.st_ctime,
             })
     return jsonify(items)
 

@@ -1761,7 +1761,7 @@ async function loadInbox() {
       <tr>
         <td class="small">${escHtml(item.filename)}</td>
         <td class="text-muted small">${(item.size/1024).toFixed(1)} KB</td>
-        <td class="text-muted small">${new Date(item.modified*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+        <td class="text-muted small">${new Date(item.added*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
         <td class="text-end">
           <button class="btn btn-sm btn-outline-primary py-0 px-2 inbox-review-btn me-1"
                   data-filename="${escHtml(item.filename)}">Review</button>
