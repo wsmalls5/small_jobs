@@ -1869,9 +1869,9 @@ saveBtn.addEventListener('click', async () => {
       data = await res.json();
       if (data.ok) {
         showToast(`Saved to ${data.file}`, 'success');
-        // Remove inbox source if this came from inbox review
+        // Move inbox source to Reviewed folder after successful save
         if (S.inboxSource) {
-          fetch(`/receipts/inbox/${encodeURIComponent(S.inboxSource)}`, {method:'DELETE'}).catch(() => {});
+          fetch(`/receipts/inbox/${encodeURIComponent(S.inboxSource)}/reviewed`, {method:'POST'}).catch(() => {});
           S.inboxSource = null;
         }
         setTimeout(showReceiptsTable, 1200);

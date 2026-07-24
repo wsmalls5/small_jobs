@@ -16,13 +16,18 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BASE_DIR  = Path(__file__).resolve().parent.parent
 UPLOADS   = BASE_DIR / "data" / "receipts" / "pending"
-INBOX     = BASE_DIR / "data" / "receipts" / "inbox"
 EXPENSES  = BASE_DIR / "data" / "expenses"
 HOURS     = BASE_DIR / "data" / "hours"
 INVOICES  = BASE_DIR / "data" / "invoices"
 CUSTOMERS = BASE_DIR / "data" / "customers" / "customers.json"
 TASKS     = BASE_DIR / "data" / "tasks" / "tasks.json"
 TEMPLATES = Path(__file__).resolve().parent / "templates"
+
+# ── Receipt inbox/reviewed — configurable via .env (defaults to local data/) ──
+_inbox_env    = os.environ.get("RECEIPT_INBOX",    "")
+_reviewed_env = os.environ.get("RECEIPT_REVIEWED", "")
+INBOX    = Path(_inbox_env)    if _inbox_env    else BASE_DIR / "data" / "receipts" / "inbox"
+REVIEWED = Path(_reviewed_env) if _reviewed_env else None
 
 # ── Email config (set these in your environment or a .env file) ───────────────
 SMTP_HOST  = os.environ.get("SMTP_HOST",  "smtp.gmail.com")
@@ -33,6 +38,8 @@ EMAIL_FROM = os.environ.get("EMAIL_FROM", "") or SMTP_USER
 
 for d in (UPLOADS, INBOX, EXPENSES, HOURS, INVOICES, TASKS.parent):
     d.mkdir(parents=True, exist_ok=True)
+if REVIEWED:
+    REVIEWED.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__, template_folder=str(TEMPLATES))
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
@@ -690,6 +697,24 @@ def delete_inbox_item(filename):
     f = INBOX / filename
     if f.exists():
         f.unlink()
+    return jsonify({"ok": True})
+
+
+@app.route("/receipts/inbox/<path:filename>/reviewed", methods=["POST"])
+def mark_inbox_reviewed(filename):
+    import shutil
+    src = INBOX / filename
+    if not src.exists():
+        return jsonify({"ok": True})  # already gone, that's fine
+    if REVIEWED:
+        dest = REVIEWED / filename
+        # Avoid name collision in Reviewed folder
+        if dest.exists():
+            stem = dest.stem
+            dest = REVIEWED / f"{stem}_{uuid.uuid4().hex[:6]}{dest.suffix}"
+        shutil.move(str(src), str(dest))
+    else:
+        src.unlink()
     return jsonify({"ok": True})
 
 
