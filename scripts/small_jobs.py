@@ -11,6 +11,8 @@ from email.mime.text      import MIMEText
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BASE_DIR  = Path(__file__).resolve().parent.parent
 UPLOADS   = BASE_DIR / "data" / "receipts" / "pending"
@@ -1469,5 +1471,6 @@ def delete_task(task_id):
 
 if __name__ == "__main__":
     print("\n  Small Jobs - Receipt Manager")
-    print("  http://localhost:5001\n")
-    app.run(debug=True, port=5001, use_reloader=False)
+    print("  Local:   http://localhost:5001")
+    print("  Network: http://192.168.0.49:5001\n")
+    app.run(host='0.0.0.0', debug=True, port=5001, use_reloader=False)
