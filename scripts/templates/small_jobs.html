@@ -1789,6 +1789,18 @@ document.getElementById('inbox-tbody').addEventListener('click', async e => {
       const data = await res.json();
       if (data.error) { showToast(data.error, 'danger'); reviewBtn.disabled = false; reviewBtn.textContent = 'Review'; return; }
       processUploadResponse(data);
+      // Remove row immediately so inbox list stays clean
+      const row = reviewBtn.closest('tr');
+      if (row) row.remove();
+      const tbody = document.getElementById('inbox-tbody');
+      if (!tbody.querySelector('tr')) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No items in inbox.</td></tr>';
+        const badge = document.getElementById('inbox-count-badge');
+        if (badge) badge.style.display = 'none';
+      } else {
+        const badge = document.getElementById('inbox-count-badge');
+        if (badge) badge.textContent = tbody.querySelectorAll('tr:not(.text-muted)').length;
+      }
     } catch(err) { showToast('Error: ' + err, 'danger'); reviewBtn.disabled = false; reviewBtn.textContent = 'Review'; }
   }
   if (delBtn) {
