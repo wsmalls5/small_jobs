@@ -47,17 +47,22 @@ app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".pdf", ".heic", ".webp"}
 
 # ── Tesseract setup ──────────────────────────────────────────────────────────
-_TESS_WIN_PATHS = [
+_TESS_PATHS = [
+    # Windows
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
     r"C:\Users\Dandy admin\AppData\Local\Programs\Tesseract-OCR\tesseract.exe",
+    # macOS — Apple Silicon (Homebrew)
+    "/opt/homebrew/bin/tesseract",
+    # macOS — Intel (Homebrew)
+    "/usr/local/bin/tesseract",
 ]
 
 def _init_tesseract():
     try:
         import pytesseract
         from PIL import Image  # noqa — just verify Pillow is present
-        for p in _TESS_WIN_PATHS:
+        for p in _TESS_PATHS:
             if Path(p).exists():
                 pytesseract.pytesseract.tesseract_cmd = p
                 break
