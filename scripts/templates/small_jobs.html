@@ -281,18 +281,17 @@
         <!-- Inbox sub-pane -->
         <div id="rcpt-sub-inbox" style="display:none" class="pt-3">
           <p class="text-muted small mb-2">
-            Files placed in <code>data/receipts/inbox/</code> appear here for review before being saved.
-            Click <strong>Review</strong> to open the receipt form.
+            Click a row to open the receipt for review. Use &#10005; to send a file to the Canceled folder.
           </p>
           <div class="card border-0 shadow-sm">
             <div class="card-body p-0">
               <table class="table table-sm table-hover align-middle mb-0">
                 <thead>
                   <tr>
-                    <th>Filename</th>
-                    <th style="width:100px">Size</th>
-                    <th style="width:160px">Added</th>
-                    <th style="width:120px"></th>
+                    <th id="inbox-th-filename" style="cursor:pointer;user-select:none">Filename <span class="inbox-sort-icon text-muted" style="font-size:.7rem"></span></th>
+                    <th id="inbox-th-size" style="width:100px;cursor:pointer;user-select:none">Size <span class="inbox-sort-icon text-muted" style="font-size:.7rem"></span></th>
+                    <th id="inbox-th-added" style="width:160px;cursor:pointer;user-select:none">Added <span class="inbox-sort-icon text-muted" style="font-size:.7rem"></span></th>
+                    <th style="width:36px"></th>
                   </tr>
                 </thead>
                 <tbody id="inbox-tbody">
@@ -1759,70 +1758,98 @@ function showRcptSubPane(which) {
   if (which === 'inbox') loadInbox();
 }
 
+let inboxItems = [];
+let inboxSort  = { col: 'added', dir: 'asc' };
+
+function renderInbox() {
+  const tbody = document.getElementById('inbox-tbody');
+  // Update sort icons
+  ['filename','size','added'].forEach(col => {
+    const th = document.getElementById(`inbox-th-${col}`);
+    const icon = th.querySelector('.inbox-sort-icon');
+    icon.textContent = inboxSort.col === col ? (inboxSort.dir === 'asc' ? '▲' : '▼') : '';
+  });
+  if (!inboxItems.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No items in inbox.</td></tr>';
+    return;
+  }
+  const sorted = [...inboxItems].sort((a, b) => {
+    let av, bv;
+    if (inboxSort.col === 'filename') { av = a.filename.toLowerCase(); bv = b.filename.toLowerCase(); }
+    else if (inboxSort.col === 'size')  { av = a.size; bv = b.size; }
+    else                               { av = a.added; bv = b.added; }
+    if (av < bv) return inboxSort.dir === 'asc' ? -1 : 1;
+    if (av > bv) return inboxSort.dir === 'asc' ?  1 : -1;
+    return 0;
+  });
+  tbody.innerHTML = sorted.map(item => `
+    <tr class="inbox-row" data-filename="${escHtml(item.filename)}" style="cursor:pointer">
+      <td class="small">${escHtml(item.filename)}</td>
+      <td class="text-muted small">${(item.size/1024).toFixed(1)} KB</td>
+      <td class="text-muted small">${new Date(item.added*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
+      <td class="text-end pe-2">
+        <button class="btn btn-sm btn-link p-0 text-danger inbox-cancel-btn"
+                data-filename="${escHtml(item.filename)}" title="Send to Canceled">&#10005;</button>
+      </td>
+    </tr>`).join('');
+}
+
 async function loadInbox() {
   const tbody = document.getElementById('inbox-tbody');
   tbody.innerHTML = '<tr><td colspan="4" class="text-muted small text-center py-3">Loading…</td></tr>';
   try {
-    const res   = await fetch('/receipts/inbox');
-    const items = await res.json();
+    const res = await fetch('/receipts/inbox');
+    inboxItems = await res.json();
     const badge = document.getElementById('inbox-count-badge');
-    if (items.length) {
-      badge.textContent    = items.length;
-      badge.style.display  = '';
-    } else {
-      badge.style.display  = 'none';
-    }
-    tbody.innerHTML = items.length ? items.map(item => `
-      <tr>
-        <td class="small">${escHtml(item.filename)}</td>
-        <td class="text-muted small">${(item.size/1024).toFixed(1)} KB</td>
-        <td class="text-muted small">${new Date(item.added*1000).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
-        <td class="text-end">
-          <button class="btn btn-sm btn-outline-primary py-0 px-2 inbox-review-btn me-1"
-                  data-filename="${escHtml(item.filename)}">Review</button>
-          <button class="btn btn-sm btn-outline-danger py-0 px-2 inbox-del-btn"
-                  data-filename="${escHtml(item.filename)}" title="Remove from inbox">&#10005;</button>
-        </td>
-      </tr>`).join('')
-    : '<tr><td colspan="4" class="text-center text-muted py-4">No items in inbox.</td></tr>';
+    badge.textContent   = inboxItems.length;
+    badge.style.display = inboxItems.length ? '' : 'none';
+    renderInbox();
   } catch(e) {
     tbody.innerHTML = '<tr><td colspan="4" class="text-danger small text-center py-3">Could not load inbox.</td></tr>';
   }
 }
 
+['filename','size','added'].forEach(col => {
+  document.getElementById(`inbox-th-${col}`).addEventListener('click', () => {
+    if (inboxSort.col === col) inboxSort.dir = inboxSort.dir === 'asc' ? 'desc' : 'asc';
+    else { inboxSort.col = col; inboxSort.dir = 'asc'; }
+    renderInbox();
+  });
+});
+
 document.getElementById('rcpt-sub-receipts-btn').addEventListener('click', () => showRcptSubPane('receipts'));
 document.getElementById('rcpt-sub-inbox-btn').addEventListener('click',    () => showRcptSubPane('inbox'));
 
 document.getElementById('inbox-tbody').addEventListener('click', async e => {
-  const reviewBtn = e.target.closest('.inbox-review-btn');
-  const delBtn    = e.target.closest('.inbox-del-btn');
-  if (reviewBtn) {
-    const filename = reviewBtn.dataset.filename;
-    reviewBtn.disabled = true; reviewBtn.textContent = 'Opening…';
+  const cancelBtn = e.target.closest('.inbox-cancel-btn');
+  const row       = e.target.closest('.inbox-row');
+
+  if (cancelBtn) {
+    e.stopPropagation();
+    const filename = cancelBtn.dataset.filename;
+    if (!confirm(`Send "${filename}" to the Canceled folder?`)) return;
+    await fetch(`/receipts/inbox/${encodeURIComponent(filename)}/canceled`, {method:'POST'});
+    inboxItems = inboxItems.filter(i => i.filename !== filename);
+    const badge = document.getElementById('inbox-count-badge');
+    badge.textContent   = inboxItems.length;
+    badge.style.display = inboxItems.length ? '' : 'none';
+    renderInbox();
+    return;
+  }
+
+  if (row) {
+    const filename = row.dataset.filename;
+    row.style.opacity = '0.5';
     try {
       const res  = await fetch(`/receipts/inbox/${encodeURIComponent(filename)}/review`, {method:'POST'});
       const data = await res.json();
-      if (data.error) { showToast(data.error, 'danger'); reviewBtn.disabled = false; reviewBtn.textContent = 'Review'; return; }
+      if (data.error) { showToast(data.error, 'danger'); row.style.opacity = ''; return; }
       processUploadResponse(data);
-      // Remove row immediately so inbox list stays clean
-      const row = reviewBtn.closest('tr');
-      if (row) row.remove();
-      const tbody = document.getElementById('inbox-tbody');
-      if (!tbody.querySelector('tr')) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No items in inbox.</td></tr>';
-        const badge = document.getElementById('inbox-count-badge');
-        if (badge) badge.style.display = 'none';
-      } else {
-        const badge = document.getElementById('inbox-count-badge');
-        if (badge) badge.textContent = tbody.querySelectorAll('tr:not(.text-muted)').length;
-      }
-    } catch(err) { showToast('Error: ' + err, 'danger'); reviewBtn.disabled = false; reviewBtn.textContent = 'Review'; }
-  }
-  if (delBtn) {
-    const filename = delBtn.dataset.filename;
-    if (!confirm(`Remove "${filename}" from inbox?`)) return;
-    await fetch(`/receipts/inbox/${encodeURIComponent(filename)}`, {method:'DELETE'});
-    loadInbox();
+      inboxItems = inboxItems.filter(i => i.filename !== filename);
+      const badge = document.getElementById('inbox-count-badge');
+      badge.textContent   = inboxItems.length;
+      badge.style.display = inboxItems.length ? '' : 'none';
+    } catch(err) { showToast('Error: ' + err, 'danger'); row.style.opacity = ''; }
   }
 });
 
