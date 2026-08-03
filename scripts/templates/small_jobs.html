@@ -1524,9 +1524,6 @@ function renderRcptByDate(container, receipts, period) {
         <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
         <td class="text-primary fw-semibold small">$${(r.receipt_total||0).toFixed(2)}</td>
         <td class="text-muted small">${escHtml(custNames||'—')}${splitBadge}</td>
-        <td style="width:36px;text-align:center">
-          <button class="btn btn-link btn-sm p-0 text-danger receipt-del-btn" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}" title="Delete">&#10005;</button>
-        </td>
       </tr>`;
     }).join('');
     html += `<div class="mb-3">
@@ -1537,7 +1534,7 @@ function renderRcptByDate(container, receipts, period) {
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0">
-            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th><th></th></tr></thead>
+            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1546,21 +1543,7 @@ function renderRcptByDate(container, receipts, period) {
   });
   container.innerHTML = html;
   container.querySelectorAll('tr[data-id]').forEach(row =>
-    row.addEventListener('click', e => {
-      if (e.target.closest('.receipt-del-btn')) return;
-      loadReceiptForEdit(row.dataset.period, row.dataset.id);
-    }));
-
-  container.querySelectorAll('.receipt-del-btn').forEach(btn =>
-    btn.addEventListener('click', async e => {
-      e.stopPropagation();
-      if (!confirm('Delete this receipt entry?')) return;
-      const { period, id } = btn.dataset;
-      const res = await fetch(`/receipts/${period}/${id}`, { method: 'DELETE' });
-      const d = await res.json();
-      if (d.ok) { showToast('Receipt deleted', 'success'); showReceiptsTable(); }
-      else showToast(d.error || 'Delete failed', 'danger');
-    }));
+    row.addEventListener('click', () => loadReceiptForEdit(row.dataset.period, row.dataset.id)));
 }
 
 function renderRcptByJob(container, receipts, period) {
@@ -1601,9 +1584,6 @@ function renderRcptByJob(container, receipts, period) {
       <td class="text-muted small" style="width:110px">${escHtml(item.vendor||'')}</td>
       <td class="small">${escHtml(item.description||'')}${splitBadge}</td>
       <td class="text-primary fw-semibold small" style="width:75px;text-align:right">$${item.amount.toFixed(2)}</td>
-      <td style="width:36px;text-align:center">
-        <button class="btn btn-link btn-sm p-0 text-danger receipt-del-btn" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}" title="Delete">&#10005;</button>
-      </td>
     </tr>`;
   };
   const makeBlock = (label, bucket, headerStyle) => `
@@ -1615,8 +1595,8 @@ function renderRcptByJob(container, receipts, period) {
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
-            <colgroup><col style="width:90px"><col style="width:110px"><col><col style="width:75px"><col style="width:36px"></colgroup>
-            <thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+            <colgroup><col style="width:90px"><col style="width:110px"><col><col style="width:75px"></colgroup>
+            <thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
             <tbody>${bucket.items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(makeItemRow).join('')}</tbody>
           </table>
         </div>
@@ -1630,21 +1610,7 @@ function renderRcptByJob(container, receipts, period) {
   }
   container.innerHTML = html;
   container.querySelectorAll('tr[data-id]').forEach(row =>
-    row.addEventListener('click', e => {
-      if (e.target.closest('.receipt-del-btn')) return;
-      loadReceiptForEdit(row.dataset.period, row.dataset.id);
-    }));
-
-  container.querySelectorAll('.receipt-del-btn').forEach(btn =>
-    btn.addEventListener('click', async e => {
-      e.stopPropagation();
-      if (!confirm('Delete this receipt entry?')) return;
-      const { period, id } = btn.dataset;
-      const res = await fetch(`/receipts/${period}/${id}`, { method: 'DELETE' });
-      const d = await res.json();
-      if (d.ok) { showToast('Receipt deleted', 'success'); showReceiptsTable(); }
-      else showToast(d.error || 'Delete failed', 'danger');
-    }));
+    row.addEventListener('click', () => loadReceiptForEdit(row.dataset.period, row.dataset.id)));
 }
 
 async function loadReceiptForEdit(period, id) {
