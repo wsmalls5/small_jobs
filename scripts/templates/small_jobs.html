@@ -410,7 +410,10 @@
               </div>
             </div>
             <div class="d-flex gap-2 mt-3 justify-content-between align-items-center">
-              <button class="btn btn-sm btn-outline-secondary" id="save-cancel-btn">&#8592; Cancel</button>
+              <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" id="save-cancel-btn">&#8592; Cancel</button>
+                <button class="btn btn-sm btn-outline-danger" id="rcpt-edit-del-btn" style="display:none">Delete</button>
+              </div>
               <button class="btn btn-primary px-4" id="save-btn">Save Receipt</button>
             </div>
           </div>
@@ -1397,6 +1400,7 @@ function showReceiptsUpload() {
   S.editPeriod = null;
   S.editId     = null;
   saveBtn.textContent = 'Save Receipt';
+  document.getElementById('rcpt-edit-del-btn').style.display = 'none';
   document.getElementById('receipts-table-view').style.display = 'none';
   document.getElementById('upload-section').style.display      = 'block';
   reviewPanel.style.display = 'none';
@@ -1415,6 +1419,7 @@ function showManualEntry() {
   singleToggle.checked = false;
   vendorInput.value    = '';
   dateInput.value      = new Date().toISOString().slice(0, 10);
+  document.getElementById('rcpt-edit-del-btn').style.display = 'none';
   document.getElementById('receipt-total-input').value = '';
   rawLines.textContent = '';
   ocrNotice.style.display = 'none';
@@ -1519,6 +1524,9 @@ function renderRcptByDate(container, receipts, period) {
         <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
         <td class="text-primary fw-semibold small">$${(r.receipt_total||0).toFixed(2)}</td>
         <td class="text-muted small">${escHtml(custNames||'—')}${splitBadge}</td>
+        <td style="width:36px;text-align:center">
+          <button class="btn btn-link btn-sm p-0 text-danger receipt-del-btn" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}" title="Delete">&#10005;</button>
+        </td>
       </tr>`;
     }).join('');
     html += `<div class="mb-3">
@@ -1529,7 +1537,7 @@ function renderRcptByDate(container, receipts, period) {
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0">
-            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
+            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1691,6 +1699,7 @@ async function loadReceiptForEdit(period, id) {
   }
 
   saveBtn.textContent = 'Update Receipt';
+  document.getElementById('rcpt-edit-del-btn').style.display = '';
   renderItems();
   showReview();
 }
@@ -1762,6 +1771,15 @@ document.getElementById('add-receipt-import-btn').addEventListener('click', show
 document.getElementById('receipts-back-btn').addEventListener('click', showReceiptsTable);
 document.getElementById('cancel-btn').addEventListener('click', showReceiptsTable);
 document.getElementById('save-cancel-btn').addEventListener('click', showReceiptsTable);
+
+document.getElementById('rcpt-edit-del-btn').addEventListener('click', async () => {
+  if (!S.editPeriod || !S.editId) return;
+  if (!confirm('Delete this receipt entry?')) return;
+  const res = await fetch(`/receipts/${S.editPeriod}/${S.editId}`, { method: 'DELETE' });
+  const d = await res.json();
+  if (d.ok) { showToast('Receipt deleted', 'success'); showReceiptsTable(); }
+  else showToast(d.error || 'Delete failed', 'danger');
+});
 
 // ── Inbox sub-tab ────────────────────────────────────────────────────────────
 function showRcptSubPane(which) {
