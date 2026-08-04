@@ -2218,9 +2218,24 @@ function renderByJob(container, entries, period) {
   }
   container.innerHTML = html;
 
+  // Inject + New Customer into group-level dropdowns
+  container.querySelectorAll('.reassign-sel, .bulk-assign-sel').forEach(sel => {
+    const qa = document.createElement('option');
+    qa.value = '__quick_add__';
+    qa.textContent = '+ New Customer';
+    sel.insertBefore(qa, sel.firstChild);
+  });
+
   // Bulk assign controls
   container.querySelectorAll('.bulk-assign-sel').forEach(sel => {
     sel.addEventListener('change', () => {
+      if (sel.value === '__quick_add__') {
+        sel.value = '';
+        quickAddTargetSel = sel;
+        quickAddJobName   = null;
+        new bootstrap.Modal(document.getElementById('quickAddCustModal')).show();
+        return;
+      }
       const btn = sel.parentElement.querySelector('.bulk-assign-btn');
       if (btn) btn.disabled = !sel.value;
     });
@@ -2262,6 +2277,13 @@ function renderByJob(container, entries, period) {
   });
   container.querySelectorAll('.reassign-sel').forEach(sel => {
     sel.addEventListener('change', () => {
+      if (sel.value === '__quick_add__') {
+        sel.value = '';
+        quickAddTargetSel = sel;
+        quickAddJobName   = null;
+        new bootstrap.Modal(document.getElementById('quickAddCustModal')).show();
+        return;
+      }
       const btn = sel.closest('.hours-reassign-panel').querySelector('.reassign-confirm-btn');
       if (btn) btn.disabled = !sel.value;
     });
@@ -2530,6 +2552,9 @@ document.getElementById('qa-save-btn').addEventListener('click', async () => {
             if (entry.job_raw === quickAddJobName) entry.customer_key = data.key;
           });
           renderHoursTable();
+        } else {
+          // Reassign/bulk-assign panel — fire change to enable the action button
+          quickAddTargetSel.dispatchEvent(new Event('change'));
         }
         quickAddTargetSel = null;
         quickAddJobName   = null;
