@@ -257,6 +257,9 @@
                 Inbox <span class="badge bg-warning text-dark ms-1" id="inbox-count-badge" style="display:none;font-size:.6rem">0</span>
               </button>
             </li>
+            <li class="nav-item">
+              <button class="nav-link text-secondary fw-semibold py-1 px-3" id="rcpt-sub-vendors-btn" style="font-size:.82rem;text-transform:uppercase;letter-spacing:.5px">Vendors</button>
+            </li>
           </ul>
           <div class="d-flex gap-2 align-items-center">
             <div class="btn-group btn-group-sm" id="rcpt-view-toggle-group" role="group">
@@ -265,7 +268,6 @@
             </div>
             <button class="btn btn-sm btn-success" id="add-receipt-manual-btn">+ Add Receipt</button>
             <button class="btn btn-sm btn-primary" id="add-receipt-import-btn">+ Import Receipt</button>
-            <button class="btn btn-sm btn-outline-secondary" id="vendors-btn" title="Manage vendor auto-correct list">Vendors</button>
           </div>
         </div>
 
@@ -299,6 +301,18 @@
                   <tr><td colspan="4" class="text-center text-muted py-4">No items in inbox.</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Vendors sub-pane -->
+        <div id="rcpt-sub-vendors" style="display:none" class="pt-3">
+          <p class="text-muted small mb-3">When OCR reads a vendor name, it's automatically corrected to the closest match below. Add your regularly-used vendors here.</p>
+          <div class="card border-0 shadow-sm" style="max-width:420px">
+            <ul class="list-group list-group-flush" id="vendors-list"></ul>
+            <div class="card-footer bg-white d-flex gap-2 py-2">
+              <input type="text" id="vendor-new-input" class="form-control form-control-sm" placeholder="Add vendor name…">
+              <button class="btn btn-sm btn-success px-3" id="vendor-add-btn">Add</button>
             </div>
           </div>
         </div>
@@ -824,26 +838,6 @@
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-success" id="task-modal-save">Save</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Vendor auto-correct modal -->
-<div class="modal fade" id="vendorsModal" tabindex="-1">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h5 class="modal-title" style="font-size:1rem">&#127981; Primary Vendors</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-0">
-        <p class="text-muted small px-3 pt-2 mb-2">OCR vendor names are auto-corrected to these when they match closely.</p>
-        <ul class="list-group list-group-flush" id="vendors-list"></ul>
-        <div class="px-3 py-2 border-top d-flex gap-2">
-          <input type="text" id="vendor-new-input" class="form-control form-control-sm" placeholder="New vendor name…">
-          <button class="btn btn-sm btn-success" id="vendor-add-btn">Add</button>
-        </div>
       </div>
     </div>
   </div>
@@ -1771,12 +1765,14 @@ document.getElementById('rcpt-edit-del-btn').addEventListener('click', async () 
 function showRcptSubPane(which) {
   document.getElementById('rcpt-sub-receipts').style.display = which === 'receipts' ? '' : 'none';
   document.getElementById('rcpt-sub-inbox').style.display    = which === 'inbox'    ? '' : 'none';
+  document.getElementById('rcpt-sub-vendors').style.display  = which === 'vendors'  ? '' : 'none';
   document.getElementById('rcpt-view-toggle-group').style.display = which === 'receipts' ? '' : 'none';
-  document.getElementById('rcpt-sub-receipts-btn').className =
-    'nav-link text-secondary fw-semibold py-1 px-3' + (which === 'receipts' ? ' active' : '');
-  document.getElementById('rcpt-sub-inbox-btn').className =
-    'nav-link text-secondary fw-semibold py-1 px-3' + (which === 'inbox'    ? ' active' : '');
-  if (which === 'inbox') loadInbox();
+  const base = 'nav-link text-secondary fw-semibold py-1 px-3';
+  document.getElementById('rcpt-sub-receipts-btn').className = base + (which === 'receipts' ? ' active' : '');
+  document.getElementById('rcpt-sub-inbox-btn').className    = base + (which === 'inbox'    ? ' active' : '');
+  document.getElementById('rcpt-sub-vendors-btn').className  = base + (which === 'vendors'  ? ' active' : '');
+  if (which === 'inbox')   loadInbox();
+  if (which === 'vendors') fetch('/vendors').then(r => r.json()).then(renderVendorList);
 }
 
 let inboxItems = [];
@@ -1840,6 +1836,7 @@ async function loadInbox() {
 
 document.getElementById('rcpt-sub-receipts-btn').addEventListener('click', () => showRcptSubPane('receipts'));
 document.getElementById('rcpt-sub-inbox-btn').addEventListener('click',    () => showRcptSubPane('inbox'));
+document.getElementById('rcpt-sub-vendors-btn').addEventListener('click',  () => showRcptSubPane('vendors'));
 
 document.getElementById('inbox-tbody').addEventListener('click', async e => {
   const cancelBtn = e.target.closest('.inbox-cancel-btn');
@@ -1964,32 +1961,22 @@ saveBtn.addEventListener('click', async () => {
 
 document.getElementById('tab-receipts-btn').addEventListener('show.bs.tab', showReceiptsTable);
 
-// ── Vendor management ────────────────────────────────────────────────────────
-const vendorsModal = new bootstrap.Modal(document.getElementById('vendorsModal'));
-
+// ── Vendor sub-tab ───────────────────────────────────────────────────────────
 function renderVendorList(vendors) {
   const ul = document.getElementById('vendors-list');
   ul.innerHTML = vendors.length ? vendors.map(v => `
-    <li class="list-group-item d-flex justify-content-between align-items-center py-1 px-3">
-      <span class="small" id="vname-${CSS.escape(v)}">${escHtml(v)}</span>
+    <li class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+      <span class="small">${escHtml(v)}</span>
       <button class="btn btn-link btn-sm p-0 text-danger vendor-del-btn" data-name="${escHtml(v)}" title="Remove">&#10005;</button>
     </li>`).join('')
-  : '<li class="list-group-item text-muted small py-2 px-3">No vendors yet.</li>';
+  : '<li class="list-group-item text-muted small py-3 px-3">No vendors yet.</li>';
 }
-
-document.getElementById('vendors-btn').addEventListener('click', async () => {
-  const res = await fetch('/vendors');
-  renderVendorList(await res.json());
-  vendorsModal.show();
-});
 
 document.getElementById('vendors-list').addEventListener('click', async e => {
   const btn = e.target.closest('.vendor-del-btn');
   if (!btn) return;
-  const name = btn.dataset.name;
-  const res  = await fetch(`/vendors/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  const d    = await res.json();
-  renderVendorList(d.vendors);
+  const res = await fetch(`/vendors/${encodeURIComponent(btn.dataset.name)}`, { method: 'DELETE' });
+  renderVendorList((await res.json()).vendors);
 });
 
 document.getElementById('vendor-add-btn').addEventListener('click', async () => {
