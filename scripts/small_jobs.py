@@ -5,7 +5,7 @@ Run:  python scripts/receipt_app.py
 Open: http://localhost:5001
 """
 
-import json, os, re, uuid, datetime, calendar, smtplib, ssl
+import json, os, re, uuid, datetime, calendar, smtplib, ssl, difflib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text      import MIMEText
 from pathlib import Path
@@ -21,6 +21,7 @@ HOURS     = BASE_DIR / "data" / "hours"
 INVOICES  = BASE_DIR / "data" / "invoices"
 CUSTOMERS = BASE_DIR / "data" / "customers" / "customers.json"
 TASKS     = BASE_DIR / "data" / "tasks" / "tasks.json"
+VENDORS   = BASE_DIR / "data" / "vendors.json"
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 
 # ── Receipt inbox/reviewed — configurable via .env (defaults to local data/) ──
@@ -61,6 +62,37 @@ _TESS_PATHS = [
     # macOS — Intel (Homebrew)
     "/usr/local/bin/tesseract",
 ]
+
+# ── Vendor normalization ──────────────────────────────────────────────────────
+
+def load_vendors():
+    if VENDORS.exists():
+        try:
+            return json.loads(VENDORS.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    return []
+
+def save_vendors(vendors):
+    VENDORS.write_text(json.dumps(sorted(vendors, key=str.lower), indent=2), encoding="utf-8")
+
+def normalize_vendor(raw, vendors):
+    """Return canonical vendor name if OCR output closely matches a known vendor."""
+    if not raw or not vendors:
+        return raw
+    raw_lower = raw.lower()
+    # Pass 1: substring — handles garbage around the real name
+    for v in vendors:
+        if v.lower() in raw_lower:
+            return v
+    # Pass 2: fuzzy — handles OCR typos / dropped characters
+    best_v, best_r = None, 0.0
+    for v in vendors:
+        r = difflib.SequenceMatcher(None, raw_lower, v.lower()).ratio()
+        if r > best_r:
+            best_r, best_v = r, v
+    return best_v if best_r >= 0.72 else raw
+
 
 def _init_tesseract():
     try:
@@ -647,6 +679,7 @@ def api_upload():
 
     lines, items = ocr_file(dest)
     vendor, date = guess_meta(lines)
+    vendor = normalize_vendor(vendor, load_vendors())
 
     return jsonify({
         "filename": filename,
@@ -690,6 +723,7 @@ def review_inbox_item(filename):
     shutil.copy2(str(src), str(dest))
     lines, items   = ocr_file(dest)
     vendor, date   = guess_meta(lines)
+    vendor = normalize_vendor(vendor, load_vendors())
     return jsonify({
         "filename":     dest_name,
         "vendor":       vendor,
@@ -741,6 +775,40 @@ def mark_inbox_canceled(filename):
     else:
         src.unlink()
     return jsonify({"ok": True})
+
+
+# ── Vendor list CRUD ─────────────────────────────────────────────────────────
+
+@app.route("/vendors", methods=["GET"])
+def api_get_vendors():
+    return jsonify(load_vendors())
+
+@app.route("/vendors", methods=["POST"])
+def api_add_vendor():
+    name = (request.get_json() or {}).get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Name required"})
+    vendors = load_vendors()
+    if name not in vendors:
+        vendors.append(name)
+        save_vendors(vendors)
+    return jsonify({"ok": True, "vendors": load_vendors()})
+
+@app.route("/vendors/<path:name>", methods=["PUT"])
+def api_update_vendor(name):
+    new_name = (request.get_json() or {}).get("name", "").strip()
+    if not new_name:
+        return jsonify({"ok": False, "error": "Name required"})
+    vendors = load_vendors()
+    vendors = [new_name if v == name else v for v in vendors]
+    save_vendors(vendors)
+    return jsonify({"ok": True, "vendors": load_vendors()})
+
+@app.route("/vendors/<path:name>", methods=["DELETE"])
+def api_delete_vendor(name):
+    vendors = [v for v in load_vendors() if v != name]
+    save_vendors(vendors)
+    return jsonify({"ok": True, "vendors": vendors})
 
 
 @app.route("/save", methods=["POST"])
