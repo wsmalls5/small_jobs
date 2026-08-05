@@ -120,7 +120,8 @@ SKIP = {"total", "subtotal", "tax", "change", "cash", "credit", "debit",
         "reward", "rewards", "rebate", "bc amt", "bk card"}
 
 VENDOR_SKIP = {"welcome", "thank", "thank you", "have", "please",
-               "come again", "receipt", "customer copy", "merchant copy"}
+               "come again", "receipt", "customer copy", "merchant copy",
+               "order summary", "order details"}
 
 
 
@@ -178,6 +179,10 @@ def parse_items(lines):
 
 def guess_meta(lines):
     vendor, date = "", ""
+    # Pre-scan: detect known receipt formats before falling back to first-line heuristic
+    all_text = " ".join(lines).lower()
+    if "amazon.com" in all_text or ("order summary" in all_text and "order #" in all_text):
+        vendor = "Amazon"
     for line in lines[:15]:
         line  = line.strip()
         lower = line.lower()
