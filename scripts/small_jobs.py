@@ -916,10 +916,33 @@ def update_receipt(period, receipt_id):
         "receipt_total": body.get("receipt_total") or round(sum(i.get("amount", 0) for i in items), 2),
     })
 
-    tmp = fp.with_suffix(".tmp")
-    tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(str(tmp), str(fp))
-    return jsonify({"ok": True})
+    # Check if the date moved to a different month — if so, migrate the record
+    new_date = records[idx].get("receipt_date", "")
+    try:
+        dt = datetime.datetime.strptime(new_date, "%Y-%m-%d")
+        new_period = f"{dt.year}_{dt.month:02d}"
+    except ValueError:
+        new_period = period
+
+    if new_period != period:
+        # Remove from old file
+        updated_record = records.pop(idx)
+        tmp = fp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp), str(fp))
+        # Append to new period file
+        new_fp = EXPENSES / f"expenses_{new_period}.json"
+        new_records = json.loads(new_fp.read_text(encoding="utf-8-sig")) if new_fp.exists() else []
+        new_records.append(updated_record)
+        tmp2 = new_fp.with_suffix(".tmp")
+        tmp2.write_text(json.dumps(new_records, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp2), str(new_fp))
+    else:
+        tmp = fp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp), str(fp))
+
+    return jsonify({"ok": True, "period": new_period})
 
 
 @app.route("/receipts/<period>/<receipt_id>", methods=["DELETE"])

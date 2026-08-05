@@ -1931,7 +1931,8 @@ saveBtn.addEventListener('click', async () => {
       });
       data = await res.json();
       if (data.ok) {
-        showToast('Receipt updated', 'success');
+        const moved = data.period && data.period !== S.editPeriod;
+        showToast(moved ? `Receipt moved to ${formatPeriodLabel(data.period)}` : 'Receipt updated', 'success');
         setTimeout(showReceiptsTable, 1200);
       } else {
         showToast('Update failed', 'danger');
