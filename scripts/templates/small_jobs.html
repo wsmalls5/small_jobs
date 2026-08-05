@@ -1459,7 +1459,7 @@ async function loadReceiptsMainView() {
   const empty   = document.getElementById('rcpt-empty-msg');
   try {
     const res  = await fetch('/expenses');
-    const data = await res.json();
+    const data = (await res.json()).filter(h => h.count > 0);
     data.sort((a, b) => a.period.localeCompare(b.period));
     if (!data.length) {
       tabs.innerHTML    = '';
