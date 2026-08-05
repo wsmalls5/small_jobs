@@ -193,7 +193,6 @@ def guess_meta(lines):
             m = re.search(r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})", line)
             if m:
                 raw = m.group(1)
-                # Try 2-digit year first so "6/29/26" → 2026, not year 26
                 for fmt in ("%m/%d/%y", "%m-%d-%y", "%m/%d/%Y", "%m-%d-%Y"):
                     try:
                         date = datetime.datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
@@ -202,6 +201,18 @@ def guess_meta(lines):
                         pass
                 if not date:
                     date = raw
+        if not date:
+            # Named-month format: "June 23, 2026" or "Order placed June 23, 2026"
+            m = re.search(
+                r"(January|February|March|April|May|June|July|August|September|October|November|December)"
+                r"\s+(\d{1,2}),?\s+(\d{4})", line, re.IGNORECASE)
+            if m:
+                try:
+                    date = datetime.datetime.strptime(
+                        f"{m.group(1)} {m.group(2)} {m.group(3)}", "%B %d %Y"
+                    ).strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
     return vendor, date
 
 
