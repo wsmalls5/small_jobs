@@ -848,14 +848,15 @@ def api_save():
         item["property_label"] = db.get(ck, {}).get("property_label", "")
 
     record = {
-        "id":            uuid.uuid4().hex[:10],
-        "saved_at":      datetime.datetime.now().isoformat(timespec="seconds"),
-        "receipt_date":  receipt_date,
-        "vendor":        body.get("vendor", ""),
-        "single_job":    body.get("single_job", False),
-        "receipt_file":  body.get("filename", ""),
-        "items":         items,
-        "receipt_total": body.get("receipt_total") or round(sum(i.get("amount", 0) for i in items), 2),
+        "id":             uuid.uuid4().hex[:10],
+        "saved_at":       datetime.datetime.now().isoformat(timespec="seconds"),
+        "receipt_date":   receipt_date,
+        "vendor":         body.get("vendor", ""),
+        "single_job":     body.get("single_job", False),
+        "receipt_file":   body.get("filename", ""),
+        "items":          items,
+        "receipt_total":  body.get("receipt_total") or round(sum(i.get("amount", 0) for i in items), 2),
+        "pending_review": bool(body.get("pending_review", False)),
     }
 
     records.append(record)
@@ -882,13 +883,15 @@ def api_expenses():
             month_label = datetime.datetime(int(parts[0]), int(parts[1]), 1).strftime("%B %Y")
         except (ValueError, IndexError):
             month_label = fp.stem.replace("expenses_", "").replace("_", "/")
+        unique_custs = len({i.get("customer_key", "") for r in recs for i in r.get("items", []) if i.get("customer_key", "")})
         out.append({
-            "file":    fp.name,
-            "month":   month_label,
-            "period":  fp.stem.replace("expenses_", ""),
-            "count":   len(recs),
-            "total":   round(sum(sum(i.get("amount", 0) for i in r.get("items", [])) for r in recs), 2),
-            "records": recs,
+            "file":      fp.name,
+            "month":     month_label,
+            "period":    fp.stem.replace("expenses_", ""),
+            "count":     len(recs),
+            "customers": unique_custs,
+            "total":     round(sum(sum(i.get("amount", 0) for i in r.get("items", [])) for r in recs), 2),
+            "records":   recs,
         })
     return jsonify(out)
 
@@ -925,11 +928,12 @@ def update_receipt(period, receipt_id):
         item["property_label"] = db.get(ck, {}).get("property_label", "")
 
     records[idx].update({
-        "receipt_date":  body.get("receipt_date",  records[idx].get("receipt_date", "")),
-        "vendor":        body.get("vendor",         records[idx].get("vendor", "")),
-        "single_job":    body.get("single_job",     records[idx].get("single_job", False)),
-        "items":         items,
-        "receipt_total": body.get("receipt_total") or round(sum(i.get("amount", 0) for i in items), 2),
+        "receipt_date":   body.get("receipt_date",   records[idx].get("receipt_date", "")),
+        "vendor":         body.get("vendor",          records[idx].get("vendor", "")),
+        "single_job":     body.get("single_job",      records[idx].get("single_job", False)),
+        "items":          items,
+        "receipt_total":  body.get("receipt_total") or round(sum(i.get("amount", 0) for i in items), 2),
+        "pending_review": bool(body.get("pending_review", False)),
     })
 
     # Check if the date moved to a different month — if so, migrate the record
@@ -1178,6 +1182,10 @@ def api_invoices_list():
         sent_dt  = datetime.datetime.fromisoformat(sent).date()
         return (today - sent_dt).days > net
 
+    db = _load_customers()
+    non_billable_keys = {ck for ck, c in db.items()
+                         if c.get("customer_type") in _NON_BILLABLE_TYPES or ck in _NON_BILLABLE_KEYS}
+
     files = sorted(INVOICES.glob("invoices_*.json"), reverse=True)
     out = []
     for fp in files:
@@ -1185,13 +1193,27 @@ def api_invoices_list():
             period = fp.stem.replace("invoices_", "")
             invs   = json.loads(fp.read_text(encoding="utf-8-sig"))
             active = [i for i in invs if not i.get("superseded")]
+
+            labor_total = round(sum(i.get("labor_subtotal", 0) for i in active), 2)
+
+            personal_total = 0.0
+            ep = EXPENSES / f"expenses_{period}.json"
+            if ep.exists():
+                for r in json.loads(ep.read_text(encoding="utf-8-sig")):
+                    for item in r.get("items", []):
+                        if item.get("customer_key", "") in non_billable_keys:
+                            personal_total += float(item.get("amount", 0))
+            personal_total = round(personal_total, 2)
+
             out.append({
-                "period":  period,
-                "count":   len(active),
-                "draft":   sum(1 for i in active if i.get("status") == "draft"),
-                "sent":    sum(1 for i in active if i.get("status") == "sent"),
-                "paid":    sum(1 for i in active if i.get("status") == "paid"),
-                "overdue": sum(1 for i in active if _is_overdue(i)),
+                "period":         period,
+                "count":          len(active),
+                "draft":          sum(1 for i in active if i.get("status") == "draft"),
+                "sent":           sum(1 for i in active if i.get("status") == "sent"),
+                "paid":           sum(1 for i in active if i.get("status") == "paid"),
+                "overdue":        sum(1 for i in active if _is_overdue(i)),
+                "labor_total":    labor_total,
+                "personal_total": personal_total,
             })
         except Exception:
             pass
@@ -1231,6 +1253,14 @@ def generate_invoices(period):
     body            = request.get_json() or {}
     target_customer = body.get("customer_key")  # None = all customers
     db              = _load_customers()
+
+    # Block generation if any receipts for this period are marked pending_review
+    ep = EXPENSES / f"expenses_{period}.json"
+    if ep.exists():
+        pending = [r for r in json.loads(ep.read_text(encoding="utf-8-sig")) if r.get("pending_review")]
+        if pending:
+            vendors = ", ".join(r.get("vendor", "?") for r in pending[:3])
+            return jsonify({"ok": False, "error": f"{len(pending)} receipt(s) are still marked 'Save for Later' ({vendors}…). Review them before generating invoices."}), 200
 
     # Parse period
     year, month  = int(period.split("_")[0]), int(period.split("_")[1])

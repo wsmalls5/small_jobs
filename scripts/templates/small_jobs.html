@@ -424,11 +424,15 @@
               </div>
             </div>
             <div class="d-flex gap-2 mt-3 justify-content-between align-items-center">
-              <div class="d-flex gap-2">
+              <div class="d-flex gap-2 align-items-center">
                 <button class="btn btn-sm btn-outline-secondary" id="save-cancel-btn">&#8592; Cancel</button>
                 <button class="btn btn-sm btn-outline-danger" id="rcpt-edit-del-btn" style="display:none">Delete</button>
+                <span id="pending-review-badge" class="badge ms-1" style="background:#b45309;display:none">&#9888; Pending Review</span>
               </div>
-              <button class="btn btn-primary px-4" id="save-btn">Save Receipt</button>
+              <div class="d-flex gap-2">
+                <button class="btn btn-warning px-3" id="save-for-later-btn">Save for Later</button>
+                <button class="btn btn-primary px-4" id="save-btn">Save Receipt</button>
+              </div>
             </div>
           </div>
 
@@ -873,15 +877,16 @@
 // 1. STATE
 // ═══════════════════════════════════════════════════════════════
 const S = {
-  customers:    [],
-  custsFull:    [],
-  filename:     '',
-  items:        [],
-  singleJob:    false,
-  hoursEntries: [],
-  hoursPeriod:  '',
-  editPeriod:   null,
-  editId:       null,
+  customers:     [],
+  custsFull:     [],
+  filename:      '',
+  items:         [],
+  singleJob:     false,
+  pendingReview: false,
+  hoursEntries:  [],
+  hoursPeriod:   '',
+  editPeriod:    null,
+  editId:        null,
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1397,8 +1402,10 @@ document.getElementById('calc-split-tax-btn').addEventListener('click', () => {
 });
 
 function showReceiptsTable() {
-  S.editPeriod = null;
-  S.editId     = null;
+  S.editPeriod    = null;
+  S.editId        = null;
+  S.pendingReview = false;
+  document.getElementById('pending-review-badge').style.display = 'none';
   saveBtn.textContent = 'Save Receipt';
   document.getElementById('receipts-table-view').style.display = 'block';
   document.getElementById('upload-section').style.display      = 'none';
@@ -1433,7 +1440,9 @@ function showManualEntry() {
   singleToggle.checked = false;
   vendorInput.value    = '';
   dateInput.value      = new Date().toISOString().slice(0, 10);
+  S.pendingReview = false;
   document.getElementById('rcpt-edit-del-btn').style.display = 'none';
+  document.getElementById('pending-review-badge').style.display = 'none';
   document.getElementById('receipt-total-input').value = '';
   rawLines.textContent = '';
   ocrNotice.style.display = 'none';
@@ -1471,15 +1480,19 @@ async function loadReceiptsMainView() {
     const newestPeriod = data[data.length - 1].period;
     const activePeriod = (lastActiveRcptPeriod && data.some(h => h.period === lastActiveRcptPeriod))
                          ? lastActiveRcptPeriod : newestPeriod;
-    tabs.innerHTML = data.map(h => `
-      <li class="nav-item" role="presentation">
+    tabs.innerHTML = data.map(h => {
+      const custText = h.customers ? ` &middot; ${h.customers} cust${h.customers!==1?'s':''}` : '';
+      const hasPending = (h.records||[]).some(r => r.pending_review);
+      const pendingDot = hasPending ? ' <span title="Has pending receipts" style="color:#d97706">&#9888;</span>' : '';
+      return `<li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
                 data-bs-toggle="tab" data-bs-target="#rcpt-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
-          ${formatPeriodLabel(h.period)}
-          <span class="badge bg-secondary ms-1" style="font-size:.65rem">$${h.total.toFixed(2)}</span>
+          ${formatPeriodLabel(h.period)}${pendingDot}
+          <span class="badge bg-secondary ms-1" style="font-size:.65rem">$${h.total.toFixed(2)}${custText}</span>
         </button>
-      </li>`).join('');
+      </li>`;
+    }).join('');
     content.innerHTML = data.map(h => `
       <div class="tab-pane fade${h.period === activePeriod ? ' show active' : ''}"
            id="rcpt-month-${h.period}" role="tabpanel">
@@ -1506,43 +1519,70 @@ function renderRcptPeriod(period) {
   else renderRcptByDate(container, receipts, period);
 }
 
+function _rcptByDateRow(r, period) {
+  const custNames = [...new Set((r.items||[]).map(i => {
+    const c = S.custsByKey?.[i.customer_key];
+    return c ? c.property_label : (i.property_label || '');
+  }).filter(Boolean))];
+  const isMulti = new Set((r.items||[]).map(i => i.customer_key||'').filter(Boolean)).size > 1;
+  const splitBadge = isMulti ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
+  const custChips = custNames.length
+    ? custNames.map(n => `<span class="badge bg-secondary me-1" style="font-size:.6rem;font-weight:500">${escHtml(n)}</span>`).join('')
+    : '—';
+  const rowStyle = r.pending_review ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
+  return `<tr style="${rowStyle}" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}">
+    <td class="fw-semibold small">${escHtml(r.vendor||'—')}</td>
+    <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
+    <td class="text-primary fw-semibold small">$${(r.receipt_total||0).toFixed(2)}</td>
+    <td>${custChips}${splitBadge}</td>
+  </tr>`;
+}
+
 function renderRcptByDate(container, receipts, period) {
   if (!receipts.length) {
     container.innerHTML = '<p class="text-muted small py-3">No receipts for this period.</p>';
     return;
   }
+  const pending  = receipts.filter(r => r.pending_review);
+  const regular  = receipts.filter(r => !r.pending_review);
+  const grandTotal = receipts.reduce((s, r) => s + (r.receipt_total || 0), 0);
+  let html = `<div class="d-flex justify-content-between align-items-center mb-3 pt-1">
+    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}</span>
+    <span class="fw-semibold text-primary">$${grandTotal.toFixed(2)} total</span>
+  </div>`;
+
+  if (pending.length) {
+    const pendTotal = pending.reduce((s, r) => s + (r.receipt_total || 0), 0);
+    const pendRows  = pending.map(r => _rcptByDateRow(r, period)).join('');
+    html += `<div class="mb-3">
+      <div class="fw-semibold small mb-2" style="color:#b45309;border-top:2px solid #fbbf24;padding-top:.6rem">&#9888; Unsubmitted / Under Review</div>
+      <div class="hours-job-header" style="background:#fffbeb;border-color:#fcd34d">
+        <span>${pending.length} receipt${pending.length!==1?'s':''}</span>
+        <span class="text-muted fw-normal">$${pendTotal.toFixed(2)}</span>
+      </div>
+      <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #fcd34d !important;border-top:none !important;">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
+            <colgroup><col style="width:30%"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
+            <tbody>${pendRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }
+
   const byDate = {}, dateOrder = [];
-  receipts.forEach(r => {
+  regular.forEach(r => {
     const d = r.receipt_date || 'Unknown';
     if (!byDate[d]) { byDate[d] = { receipts: [], total: 0 }; dateOrder.push(d); }
     byDate[d].receipts.push(r);
     byDate[d].total += r.receipt_total || 0;
   });
   dateOrder.sort();
-  const grandTotal = receipts.reduce((s, r) => s + (r.receipt_total || 0), 0);
-  let html = `<div class="d-flex justify-content-between align-items-center mb-3 pt-1">
-    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}</span>
-    <span class="fw-semibold text-primary">$${grandTotal.toFixed(2)} total</span>
-  </div>`;
   dateOrder.forEach(date => {
     const group = byDate[date];
-    const rows = group.receipts.map(r => {
-      const custNames = [...new Set((r.items||[]).map(i => {
-        const c = S.custsByKey?.[i.customer_key];
-        return c ? c.property_label : (i.property_label || '');
-      }).filter(Boolean))];
-      const isMulti = new Set((r.items||[]).map(i => i.customer_key||'').filter(Boolean)).size > 1;
-      const splitBadge = isMulti ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
-      const custChips = custNames.length
-        ? custNames.map(n => `<span class="badge bg-secondary me-1" style="font-size:.6rem;font-weight:500">${escHtml(n)}</span>`).join('')
-        : '—';
-      return `<tr style="cursor:pointer" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}">
-        <td class="fw-semibold small">${escHtml(r.vendor||'—')}</td>
-        <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
-        <td class="text-primary fw-semibold small">$${(r.receipt_total||0).toFixed(2)}</td>
-        <td>${custChips}${splitBadge}</td>
-      </tr>`;
-    }).join('');
+    const rows  = group.receipts.map(r => _rcptByDateRow(r, period)).join('');
     html += `<div class="mb-3">
       <div class="hours-job-header">
         <span>${escHtml(date)}</span>
@@ -1569,14 +1609,20 @@ function renderRcptByJob(container, receipts, period) {
     container.innerHTML = '<p class="text-muted small py-3">No receipts for this period.</p>';
     return;
   }
-  const buckets = {}, unassigned = [];
+  const pendingIds = new Set(receipts.filter(r => r.pending_review).map(r => r.id));
+  const buckets = {}, unassigned = [], pendingItems = [];
   receipts.forEach(r => {
     const multiCust = new Set((r.items||[]).map(i => i.customer_key||'').filter(Boolean)).size > 1;
     (r.items||[]).forEach(item => {
       const flat = {
         description: item.description, amount: parseFloat(item.amount)||0,
-        vendor: r.vendor, date: r.receipt_date, receipt_id: r.id, period, is_split: multiCust,
+        vendor: r.vendor, date: r.receipt_date, receipt_id: r.id, period,
+        is_split: multiCust, is_pending: !!r.pending_review,
       };
+      if (r.pending_review) {
+        pendingItems.push(flat);
+        return;
+      }
       const ck = item.customer_key || '';
       if (ck) {
         if (!buckets[ck]) {
@@ -1597,7 +1643,8 @@ function renderRcptByJob(container, receipts, period) {
   </div>`;
   const makeItemRow = item => {
     const splitBadge = item.is_split ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
-    return `<tr style="cursor:pointer" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}">
+    const rowStyle = item.is_pending ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
+    return `<tr style="${rowStyle}" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}">
       <td class="text-muted small" style="width:90px;white-space:nowrap">${escHtml(item.date||'')}</td>
       <td class="text-muted small" style="width:110px">${escHtml(item.vendor||'')}</td>
       <td class="small">${escHtml(item.description||'')}${splitBadge}</td>
@@ -1620,6 +1667,10 @@ function renderRcptByJob(container, receipts, period) {
         </div>
       </div>
     </div>`;
+  if (pendingItems.length) {
+    html += `<div class="fw-semibold small mb-2" style="color:#b45309;border-top:2px solid #fbbf24;padding-top:.6rem">&#9888; Unsubmitted / Under Review</div>`;
+    html += makeBlock('Pending Review', { items: pendingItems, total: pendingItems.reduce((s,i) => s+i.amount, 0) }, 'background:#fffbeb;border-color:#fcd34d');
+  }
   Object.values(buckets).sort((a,b) => a.label.localeCompare(b.label))
     .forEach(b => { html += makeBlock(b.label, b, ''); });
   if (unassigned.length) {
@@ -1682,6 +1733,8 @@ async function loadReceiptForEdit(period, id) {
     document.getElementById('rcpt-form-col').className   = 'col-12';
   }
 
+  S.pendingReview = record.pending_review || false;
+  document.getElementById('pending-review-badge').style.display = S.pendingReview ? '' : 'none';
   saveBtn.textContent = 'Update Receipt';
   document.getElementById('rcpt-edit-del-btn').style.display = '';
   renderItems();
@@ -1715,10 +1768,12 @@ async function handleFile(file) {
 
 function processUploadResponse(data) {
   const ext = (data.filename || '').split('.').pop().toLowerCase();
-  S.filename     = data.filename;
-  S.inboxSource  = data.inbox_source || null;
-  S.items        = data.items || [];
-  S.singleJob    = false;
+  S.filename      = data.filename;
+  S.inboxSource   = data.inbox_source || null;
+  S.items         = data.items || [];
+  S.singleJob     = false;
+  S.pendingReview = false;
+  document.getElementById('pending-review-badge').style.display = 'none';
   singleToggle.checked = false;
 
   const url = '/uploads/' + data.filename;
@@ -1917,12 +1972,22 @@ saveBtn.addEventListener('click', async () => {
     customer_key: S.singleJob ? singleSelect.value : it.customer_key,
     amount: parseFloat(it.amount) || 0,
   }));
+  // Warn if receipt date is 2+ months before current month
+  if (dateInput.value) {
+    const rd = new Date(dateInput.value + 'T00:00:00');
+    const now = new Date();
+    const monthsDiff = (now.getFullYear() - rd.getFullYear()) * 12 + (now.getMonth() - rd.getMonth());
+    if (monthsDiff >= 2) {
+      showToast(`Heads up: this receipt date is in ${rd.toLocaleString('default',{month:'long',year:'numeric'})} — ${monthsDiff} months ago.`, 'warning');
+    }
+  }
   const payload = {
-    filename:      S.filename,
-    vendor:        vendorInput.value.trim(),
-    receipt_date:  dateInput.value,
-    single_job:    S.singleJob,
-    receipt_total: parseFloat(document.getElementById('receipt-total-input').value) || null,
+    filename:       S.filename,
+    vendor:         vendorInput.value.trim(),
+    receipt_date:   dateInput.value,
+    single_job:     S.singleJob,
+    receipt_total:  parseFloat(document.getElementById('receipt-total-input').value) || null,
+    pending_review: false,
     items,
   };
   saveBtn.disabled    = true;
@@ -1961,6 +2026,60 @@ saveBtn.addEventListener('click', async () => {
   } finally {
     saveBtn.disabled    = false;
     saveBtn.textContent = S.editPeriod ? 'Update Receipt' : 'Save Receipt';
+  }
+});
+
+document.getElementById('save-for-later-btn').addEventListener('click', async () => {
+  if (S.singleJob && !singleSelect.value) {
+    showToast('Select a customer for this single-job receipt.', 'danger');
+    singleSelect.focus();
+    return;
+  }
+  if (S.items.every(it => !(parseFloat(it.amount) > 0))) {
+    showToast('Add at least one item with an amount before saving.', 'danger');
+    return;
+  }
+  const items = S.items.map(it => ({
+    ...it,
+    customer_key: S.singleJob ? singleSelect.value : it.customer_key,
+    amount: parseFloat(it.amount) || 0,
+  }));
+  const payload = {
+    filename:       S.filename,
+    vendor:         vendorInput.value.trim(),
+    receipt_date:   dateInput.value,
+    single_job:     S.singleJob,
+    receipt_total:  parseFloat(document.getElementById('receipt-total-input').value) || null,
+    pending_review: true,
+    items,
+  };
+  const btn = document.getElementById('save-for-later-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    let res, data;
+    if (S.editPeriod && S.editId) {
+      res  = await fetch(`/receipts/${S.editPeriod}/${S.editId}`, {
+        method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload),
+      });
+      data = await res.json();
+    } else {
+      res  = await fetch('/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+      data = await res.json();
+    }
+    if (data.ok) {
+      showToast('Saved for later review ⚠', 'warning');
+      if (S.inboxSource) {
+        fetch(`/receipts/inbox/${encodeURIComponent(S.inboxSource)}/reviewed`, {method:'POST'}).catch(() => {});
+        S.inboxSource = null;
+      }
+      setTimeout(showReceiptsTable, 1200);
+    } else {
+      showToast('Save failed', 'danger');
+    }
+  } catch(err) {
+    showToast('Error: ' + err, 'danger');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save for Later';
   }
 });
 
@@ -2972,12 +3091,15 @@ async function loadInvoicesMainView() {
       const badge  = h.draft   ? `<span class="badge bg-secondary ms-1" style="font-size:.6rem">${h.draft}d</span>`    : '';
       const sbadge = h.sent    ? `<span class="badge bg-primary ms-1"   style="font-size:.6rem">${h.sent}s</span>`     : '';
       const pbadge = h.paid    ? `<span class="badge bg-success ms-1"   style="font-size:.6rem">${h.paid}p</span>`     : '';
-      const obadge = h.overdue ? `<span class="badge bg-danger ms-1" style="font-size:.6rem">${h.overdue}!</span>` : '';
+      const obadge = h.overdue ? `<span class="badge bg-danger ms-1"    style="font-size:.6rem">${h.overdue}!</span>`  : '';
+      const lbadge = h.labor_total    ? `<span class="badge bg-success me-1"                              style="font-size:.55rem">$${h.labor_total.toFixed(0)} labor</span>`    : '';
+      const xbadge = h.personal_total ? `<span class="badge me-1" style="background:#7c3aed;font-size:.55rem">$${h.personal_total.toFixed(0)} personal</span>` : '';
+      const revLine = (lbadge || xbadge) ? `<br><small>${lbadge}${xbadge}</small>` : '';
       return `<li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
                 data-bs-toggle="tab" data-bs-target="#inv-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
-          ${formatPeriodLabel(h.period)}${badge}${sbadge}${pbadge}${obadge}
+          ${formatPeriodLabel(h.period)}${badge}${sbadge}${pbadge}${obadge}${revLine}
         </button>
       </li>`;
     }).join('');
@@ -3107,7 +3229,11 @@ function renderInvList(container, period, invs) {
         <div class="card-body pb-2">
           <div class="d-flex justify-content-between align-items-start mb-1">
             <div>
-              <div class="fw-semibold" style="font-size:.95rem">${escHtml(inv.bill_to_name)}</div>
+              <div class="fw-semibold" style="font-size:.95rem">
+                <a href="#" class="text-dark text-decoration-none inv-cust-link"
+                   data-ckey="${escHtml(inv.customer_key)}"
+                   title="Edit customer">${escHtml(inv.bill_to_name)}</a>
+              </div>
               ${inv.property_label ? `<div class="text-muted" style="font-size:.82rem"><strong>Property:</strong> ${escHtml(inv.property_label)}</div>` : ''}
               <div class="text-muted" style="font-size:.75rem"><strong>Invoice #:</strong> ${escHtml(inv.invoice_id)}${corrBadge}</div>
             </div>
@@ -3339,6 +3465,28 @@ document.getElementById('inv-gen-confirm-btn').addEventListener('click', async (
 
 // Delegated handler for CORRECTED badge history toggle
 invMonthContent.addEventListener('click', async e => {
+  const custLink = e.target.closest('.inv-cust-link');
+  if (custLink) {
+    e.preventDefault();
+    const key = custLink.dataset.ckey;
+    if (!key) return;
+    const res = await fetch(`/customers/${encodeURIComponent(key)}`);
+    const c   = await res.json();
+    document.getElementById('cust-modal-title').textContent = 'Edit Customer';
+    document.getElementById('cust-edit-key').value  = key;
+    document.getElementById('cm-label').value        = c.property_label  || '';
+    document.getElementById('cm-billto').value       = c.bill_to_name    || '';
+    document.getElementById('cm-address').value      = c.address         || '';
+    document.getElementById('cm-phone').value        = c.phone           || '';
+    document.getElementById('cm-email').value        = c.email           || '';
+    document.getElementById('cm-rate').value         = c.hourly_rate     || 70;
+    document.getElementById('cm-type').value         = c.customer_type   || 'individual';
+    aliasList.innerHTML = '';
+    (c.aliases || []).forEach(a => addAliasRow(a));
+    document.getElementById('cust-del-btn').style.display = '';
+    custModal.show();
+    return;
+  }
   const badge = e.target.closest('.inv-hist-toggle');
   if (!badge) return;
   const period    = badge.dataset.period;
