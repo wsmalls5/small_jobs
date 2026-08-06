@@ -2,6 +2,8 @@
 customers_export.csv
 example_data/
 .env
+.env.*
+data-handoff.zip
 
 # Data folder — keep directory structure, ignore all file content
 data/**
