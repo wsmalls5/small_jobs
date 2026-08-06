@@ -162,6 +162,8 @@
     100% { background-color: transparent; }
   }
   .rcpt-row-flash { animation: rcpt-row-flash 1.4s ease-out; }
+  #inv-filter-group .btn:first-child { border-radius: 1rem 0 0 1rem !important; }
+  #inv-filter-group .btn:last-child  { border-radius: 0 1rem 1rem 0 !important; }
 </style>
 </head>
 <body>
@@ -3201,13 +3203,12 @@ function renderInvList(container, period, invs) {
     return;
   }
 
-  // Revenue summary badges
+  // Revenue summary badges (left side of header)
   const sm = invSummaryByPeriod[period] || {};
-  let revHtml = '<div class="d-flex gap-2 flex-wrap mb-3">';
-  if (sm.labor_total)    revHtml += `<span class="badge bg-success px-3 py-2" style="font-size:.8rem">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
-  if (sm.tools_total)    revHtml += `<span class="badge bg-primary px-3 py-2" style="font-size:.8rem">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
-  if (sm.personal_total) revHtml += `<span class="badge px-3 py-2" style="background:#db2777;font-size:.8rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
-  revHtml += '</div>';
+  let badgesHtml = '';
+  if (sm.labor_total)    badgesHtml += `<span class="badge bg-success px-3 py-2" style="font-size:.8rem">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
+  if (sm.tools_total)    badgesHtml += `<span class="badge bg-primary px-3 py-2" style="font-size:.8rem">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
+  if (sm.personal_total) badgesHtml += `<span class="badge px-3 py-2" style="background:#db2777;font-size:.8rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
 
   // Filter
   const filtered = invs.filter(inv => {
@@ -3223,30 +3224,35 @@ function renderInvList(container, period, invs) {
     if (sub[s]) { sub[s].n++; sub[s].t += inv.total || 0; }
     if (invIsOverdue(inv)) { sub.overdue.n++; sub.overdue.t += inv.total || 0; }
   });
-  const subtotalHtml = `
-    <div class="d-flex gap-4 justify-content-end mb-3 pt-1" style="font-size:.82rem">
-      <span><span class="badge bg-secondary me-1">${sub.draft.n}</span>
-        <span class="text-muted">Draft</span>
-        <span class="fw-semibold ms-1">$${sub.draft.t.toFixed(2)}</span></span>
-      <span><span class="badge bg-primary me-1">${sub.sent.n}</span>
-        <span class="text-muted">Sent</span>
-        <span class="fw-semibold ms-1">$${sub.sent.t.toFixed(2)}</span></span>
-      <span><span class="badge bg-success me-1">${sub.paid.n}</span>
-        <span class="text-muted">Paid</span>
-        <span class="fw-semibold ms-1">$${sub.paid.t.toFixed(2)}</span></span>
-      <span><span class="badge bg-danger me-1">${sub.overdue.n}</span>
-        <span class="text-muted">Overdue</span>
-        <span class="fw-semibold ms-1 text-danger">$${sub.overdue.t.toFixed(2)}</span></span>
+
+  // Combined header: revenue badges (left) + status stats (right) on one line
+  const headerHtml = `
+    <div class="d-flex justify-content-between align-items-center mb-3 pt-1 flex-wrap gap-2">
+      <div class="d-flex gap-2 flex-wrap">${badgesHtml}</div>
+      <div class="d-flex gap-4" style="font-size:.82rem">
+        <span><span class="badge bg-secondary me-1">${sub.draft.n}</span>
+          <span class="text-muted">Draft</span>
+          <span class="fw-semibold ms-1">$${sub.draft.t.toFixed(2)}</span></span>
+        <span><span class="badge bg-primary me-1">${sub.sent.n}</span>
+          <span class="text-muted">Sent</span>
+          <span class="fw-semibold ms-1">$${sub.sent.t.toFixed(2)}</span></span>
+        <span><span class="badge bg-success me-1">${sub.paid.n}</span>
+          <span class="text-muted">Paid</span>
+          <span class="fw-semibold ms-1">$${sub.paid.t.toFixed(2)}</span></span>
+        <span><span class="badge bg-danger me-1">${sub.overdue.n}</span>
+          <span class="text-muted">Overdue</span>
+          <span class="fw-semibold ms-1 text-danger">$${sub.overdue.t.toFixed(2)}</span></span>
+      </div>
     </div>`;
 
   if (!filtered.length) {
-    container.innerHTML = revHtml + subtotalHtml +
+    container.innerHTML = headerHtml +
       `<p class="text-muted small py-3">No ${invFilter} invoices for this period.</p>`;
     return;
   }
 
   const sorted = [...filtered].sort((a, b) => a.bill_to_name.localeCompare(b.bill_to_name));
-  let html = revHtml + subtotalHtml + `<div class="row g-3">`;
+  let html = headerHtml + `<div class="row g-3">`;
 
   sorted.forEach(inv => {
     const statusKey = inv.status || 'draft';

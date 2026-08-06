@@ -1159,7 +1159,7 @@ def _invoice_meta():
     mp = INVOICES / "meta.json"
     if mp.exists():
         return json.loads(mp.read_text(encoding="utf-8-sig"))
-    return {"last_invoice_number": 119}
+    return {"last_invoice_number": 119, "last_year": None}
 
 def _save_invoice_meta(meta):
     tmp = (INVOICES / "meta.json").with_suffix(".tmp")
@@ -1168,9 +1168,13 @@ def _save_invoice_meta(meta):
 
 def _next_invoice_id(year):
     meta = _invoice_meta()
+    if meta.get("last_year") != year:
+        # New year — reset counter so first invoice is YYYY_001
+        meta["last_invoice_number"] = 0
+        meta["last_year"] = year
     meta["last_invoice_number"] += 1
     _save_invoice_meta(meta)
-    return f"{year}_{meta['last_invoice_number']}"
+    return f"{year}_{meta['last_invoice_number']:03d}"
 
 def _load_invoices(period):
     fp = INVOICES / f"invoices_{period}.json"
