@@ -1013,12 +1013,39 @@ def update_hours_entry(period, entry_id):
     for field in ("date", "in_time", "out_time", "hours", "memo", "customer_key", "property_label", "job_raw"):
         if field in body:
             entries[idx][field] = body[field]
-    # Recalculate total_hours for the record
-    record["total_hours"] = round(sum(float(e.get("hours", 0)) for e in entries), 2)
-    tmp = fp.with_suffix(".tmp")
-    tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(str(tmp), str(fp))
-    return jsonify({"ok": True})
+
+    # Check if the date crossed into a different month — migrate if so
+    new_date = entries[idx].get("date", "")
+    try:
+        dt         = datetime.datetime.strptime(new_date, "%Y-%m-%d")
+        new_period = f"{dt.year}_{dt.month:02d}"
+    except ValueError:
+        new_period = period
+
+    if new_period != period:
+        migrated = entries.pop(idx)
+        record["total_hours"] = round(sum(float(e.get("hours", 0)) for e in entries), 2)
+        tmp = fp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp), str(fp))
+
+        new_fp = HOURS / f"hours_{new_period}.json"
+        if new_fp.exists():
+            new_record = json.loads(new_fp.read_text(encoding="utf-8-sig"))
+        else:
+            new_record = {"period": new_period, "total_hours": 0, "entries": []}
+        new_record["entries"].append(migrated)
+        new_record["total_hours"] = round(sum(float(e.get("hours", 0)) for e in new_record["entries"]), 2)
+        tmp2 = new_fp.with_suffix(".tmp")
+        tmp2.write_text(json.dumps(new_record, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp2), str(new_fp))
+    else:
+        record["total_hours"] = round(sum(float(e.get("hours", 0)) for e in entries), 2)
+        tmp = fp.with_suffix(".tmp")
+        tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(str(tmp), str(fp))
+
+    return jsonify({"ok": True, "period": new_period})
 
 
 @app.route("/hours/<period>/bulk-assign", methods=["POST"])

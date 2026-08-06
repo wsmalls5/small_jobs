@@ -2983,6 +2983,23 @@ document.getElementById('he-save-btn').addEventListener('click', async () => {
           updateTabBadge(usedPeriod);
         }
       } else {
+        const toPeriod = d => {
+          const dt = new Date((d || '') + 'T12:00:00');
+          return `${dt.getFullYear()}_${String(dt.getMonth()+1).padStart(2,'0')}`;
+        };
+        const newPeriod = data.period || toPeriod(payload.date);
+        if (newPeriod !== period) {
+          // Entry crossed into a different month — move in cache, rebuild tabs, switch
+          hoursDataCache[period] = (hoursDataCache[period] || []).filter(e => e.entry_id !== entryId);
+          if (!hoursDataCache[newPeriod]) hoursDataCache[newPeriod] = [];
+          hoursDataCache[newPeriod].push({ ...payload, entry_id: entryId });
+          bootstrap.Modal.getInstance(document.getElementById('hoursEntryModal')).hide();
+          showToast(`Entry moved to ${formatPeriodLabel(newPeriod)}`, 'success');
+          await loadHoursMainView();
+          const newTab = document.querySelector(`#hoursMonthTabs button[data-period="${newPeriod}"]`);
+          if (newTab) bootstrap.Tab.getOrCreateInstance(newTab).show();
+          return;
+        }
         const cached = hoursDataCache[period] || [];
         const idx    = cached.findIndex(e => e.entry_id === entryId);
         if (idx >= 0) Object.assign(cached[idx], payload);
