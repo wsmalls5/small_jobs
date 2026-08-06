@@ -156,6 +156,12 @@
   .btn-inv-future-primary:hover { background:rgba(13,110,253,.13) !important; }
   .btn-inv-future-success { color:#198754; border:1px solid #198754; }
   .btn-inv-future-success:hover { background:rgba(25,135,84,.13) !important; }
+  @keyframes rcpt-row-flash {
+    0%   { background-color: #fef9c3; }
+    25%  { background-color: #fde047; }
+    100% { background-color: transparent; }
+  }
+  .rcpt-row-flash { animation: rcpt-row-flash 1.4s ease-out; }
 </style>
 </head>
 <body>
@@ -664,7 +670,8 @@
               <option value="rental_advisor">Rental Advisor</option>
               <option value="hoa">HOA</option>
               <option value="multi_property">Multi-Property</option>
-              <option value="personal">Personal / Tools</option>
+              <option value="tools">Tools / Materials</option>
+              <option value="personal">Personal</option>
             </select>
           </div>
           <div class="col-12">
@@ -920,14 +927,16 @@ const TYPE_LABELS = {
   hoa:            'HOAs',
   multi_property: 'Multi-Property',
   individual:     'Individual Customers',
-  personal:       'Personal / Tools',
+  tools:          'Tools / Materials',
+  personal:       'Personal',
 };
 const TYPE_DISPLAY = {
   rental_advisor: 'Rental Advisor',
   hoa:            'HOA',
   multi_property: 'Multi-Property',
   individual:     'Individual',
-  personal:       'Personal / Tools',
+  tools:          'Tools / Materials',
+  personal:       'Personal',
 };
 
 function escHtml(str) {
@@ -1026,7 +1035,7 @@ function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], show
     if (!groups[c.type]) groups[c.type] = [];
     groups[c.type].push(c);
   });
-  ['rental_advisor','hoa','multi_property','individual','personal'].forEach(type => {
+  ['rental_advisor','hoa','multi_property','individual','tools','personal'].forEach(type => {
     if (excludeTypes.includes(type) || !groups[type]) return;
     const og = document.createElement('optgroup');
     og.label = TYPE_LABELS[type] || type;
@@ -1082,7 +1091,8 @@ viewAllBtn.addEventListener('click', () => {
 function renderCustomerTables(filter = '') {
   const fl = filter.toLowerCase();
   const rows = S.custsFull.filter(c => {
-    if ((c.customer_type || '') === 'personal') return false;
+    const ct = c.customer_type || '';
+    if (ct === 'personal' || ct === 'tools') return false;
     if (!fl) return true;
     if ((c.property_label || '').toLowerCase().includes(fl)) return true;
     if ((c.bill_to_name   || '').toLowerCase().includes(fl)) return true;
@@ -1401,6 +1411,9 @@ document.getElementById('calc-split-tax-btn').addEventListener('click', () => {
   showToast(`Split tax $${totalTax.toFixed(2)} across ${keys.length} customers`, 'success');
 });
 
+let _savedScrollY    = -1;  // scroll position captured when entering edit
+let _pendingFlashId  = null; // receipt id to flash after returning to table
+
 function showReceiptsTable() {
   S.editPeriod    = null;
   S.editId        = null;
@@ -1481,7 +1494,6 @@ async function loadReceiptsMainView() {
     const activePeriod = (lastActiveRcptPeriod && data.some(h => h.period === lastActiveRcptPeriod))
                          ? lastActiveRcptPeriod : newestPeriod;
     tabs.innerHTML = data.map(h => {
-      const custText = h.customers ? ` &middot; ${h.customers} cust${h.customers!==1?'s':''}` : '';
       const hasPending = (h.records||[]).some(r => r.pending_review);
       const pendingDot = hasPending ? ' <span title="Has pending receipts" style="color:#d97706">&#9888;</span>' : '';
       return `<li class="nav-item" role="presentation">
@@ -1489,7 +1501,7 @@ async function loadReceiptsMainView() {
                 data-bs-toggle="tab" data-bs-target="#rcpt-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
           ${formatPeriodLabel(h.period)}${pendingDot}
-          <span class="badge bg-secondary ms-1" style="font-size:.65rem">$${h.total.toFixed(2)}${custText}</span>
+          <span class="badge bg-secondary ms-1" style="font-size:.65rem">$${h.total.toFixed(2)}</span>
         </button>
       </li>`;
     }).join('');
@@ -1500,6 +1512,25 @@ async function loadReceiptsMainView() {
       </div>`).join('');
     data.forEach(h => { rcptDataCache[h.period] = h.records; });
     renderRcptPeriod(activePeriod);
+
+    // Restore scroll position and flash the updated row if returning from edit
+    if (_savedScrollY >= 0 || _pendingFlashId) {
+      const targetY  = _savedScrollY;
+      const flashId  = _pendingFlashId;
+      _savedScrollY   = -1;
+      _pendingFlashId = null;
+      requestAnimationFrame(() => {
+        if (targetY >= 0) window.scrollTo({ top: targetY, behavior: 'instant' });
+        if (flashId) {
+          const row = document.querySelector(`tr[data-id="${flashId}"]`);
+          if (row) {
+            row.classList.add('rcpt-row-flash');
+            row.addEventListener('animationend', () => row.classList.remove('rcpt-row-flash'), { once: true });
+          }
+        }
+      });
+    }
+
     tabs.querySelectorAll('button[data-period]').forEach(btn => {
       btn.addEventListener('shown.bs.tab', () => {
         lastActiveRcptPeriod = btn.dataset.period;
@@ -1546,8 +1577,10 @@ function renderRcptByDate(container, receipts, period) {
   const pending  = receipts.filter(r => r.pending_review);
   const regular  = receipts.filter(r => !r.pending_review);
   const grandTotal = receipts.reduce((s, r) => s + (r.receipt_total || 0), 0);
+  const uniqueCusts = new Set(receipts.flatMap(r => (r.items||[]).map(i => i.customer_key).filter(Boolean))).size;
+  const custText = uniqueCusts ? ` &middot; ${uniqueCusts} Customer${uniqueCusts!==1?'s':''}` : '';
   let html = `<div class="d-flex justify-content-between align-items-center mb-3 pt-1">
-    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}</span>
+    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}${custText}</span>
     <span class="fw-semibold text-primary">$${grandTotal.toFixed(2)} total</span>
   </div>`;
 
@@ -1637,8 +1670,10 @@ function renderRcptByJob(container, receipts, period) {
     });
   });
   const grandTotal = receipts.reduce((s, r) => s + (r.receipt_total||0), 0);
+  const uniqueCustsJ = new Set(receipts.flatMap(r => (r.items||[]).map(i => i.customer_key).filter(Boolean))).size;
+  const custTextJ = uniqueCustsJ ? ` &middot; ${uniqueCustsJ} Customer${uniqueCustsJ!==1?'s':''}` : '';
   let html = `<div class="d-flex justify-content-between align-items-center mb-3 pt-1">
-    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}</span>
+    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}${custTextJ}</span>
     <span class="fw-semibold text-primary">$${grandTotal.toFixed(2)} total</span>
   </div>`;
   const makeItemRow = item => {
@@ -1683,6 +1718,7 @@ function renderRcptByJob(container, receipts, period) {
 }
 
 async function loadReceiptForEdit(period, id) {
+  _savedScrollY = window.scrollY;
   const res = await fetch(`/receipts/${period}/${id}`);
   const record = await res.json();
   if (record.error) { showToast('Could not load receipt', 'danger'); return; }
@@ -2002,6 +2038,7 @@ saveBtn.addEventListener('click', async () => {
       if (data.ok) {
         const moved = data.period && data.period !== S.editPeriod;
         showToast(moved ? `Receipt moved to ${formatPeriodLabel(data.period)}` : 'Receipt updated', 'success');
+        _pendingFlashId = S.editId;
         setTimeout(showReceiptsTable, 1200);
       } else {
         showToast('Update failed', 'danger');
@@ -2068,6 +2105,7 @@ document.getElementById('save-for-later-btn').addEventListener('click', async ()
     }
     if (data.ok) {
       showToast('Saved for later review ⚠', 'warning');
+      if (S.editId) _pendingFlashId = S.editId;
       if (S.inboxSource) {
         fetch(`/receipts/inbox/${encodeURIComponent(S.inboxSource)}/reviewed`, {method:'POST'}).catch(() => {});
         S.inboxSource = null;
@@ -2307,7 +2345,7 @@ function renderByJob(container, entries, period) {
     </tr>`;
   }).join('');
   const custOpts = (S.customers || [])
-    .filter(c => c.customer_type !== 'personal')
+    .filter(c => c.customer_type !== 'personal' && c.customer_type !== 'tools')
     .map(c => `<option value="${escHtml(c.key)}">${escHtml(c.property_label || c.key)}</option>`)
     .join('');
   const makeBlock = (job, headerStyle, p) => {
@@ -2622,7 +2660,7 @@ function renderHoursTable() {
                 data-job="${escHtml(jobName)}"></select>
       </td>`;
     hoursTbody.appendChild(hdr);
-    buildCustomerSelect(hdr.querySelector('.hours-job-sel'), job.customer_key, ['personal'], true);
+    buildCustomerSelect(hdr.querySelector('.hours-job-sel'), job.customer_key, ['personal', 'tools'], true);
 
     // Entry detail rows — inline-editable
     job.indices.forEach(i => {
@@ -2722,7 +2760,7 @@ document.getElementById('qa-save-btn').addEventListener('click', async () => {
       const listRes = await fetch('/customers');
       S.customers = await listRes.json();
       if (quickAddTargetSel) {
-        buildCustomerSelect(quickAddTargetSel, data.key, ['personal'], true);
+        buildCustomerSelect(quickAddTargetSel, data.key, ['personal', 'tools'], true);
         if (quickAddJobName) {
           // In review screen: assign new customer to all entries for this job
           S.hoursEntries.forEach(entry => {
@@ -2878,7 +2916,7 @@ function openHoursEntryEdit(period, entryId) {
     document.getElementById('he-out').value     = '';
     document.getElementById('he-hours').value   = '';
     document.getElementById('he-memo').value    = '';
-    buildCustomerSelect(document.getElementById('he-customer'), '', ['personal'], true);
+    buildCustomerSelect(document.getElementById('he-customer'), '', ['personal', 'tools'], true);
   } else {
     const entry = (hoursDataCache[period] || []).find(e => e.entry_id === entryId);
     if (!entry) return;
@@ -2887,7 +2925,7 @@ function openHoursEntryEdit(period, entryId) {
     document.getElementById('he-out').value     = ampmTo24h(entry.out_time || '');
     document.getElementById('he-hours').value   = entry.hours    || 0;
     document.getElementById('he-memo').value    = entry.memo     || '';
-    buildCustomerSelect(document.getElementById('he-customer'), entry.customer_key || '', ['personal'], true);
+    buildCustomerSelect(document.getElementById('he-customer'), entry.customer_key || '', ['personal', 'tools'], true);
   }
   new bootstrap.Modal(document.getElementById('hoursEntryModal')).show();
 }
@@ -3041,7 +3079,8 @@ document.getElementById('tab-hours-btn').addEventListener('show.bs.tab', showHou
 const invMonthTabs    = document.getElementById('invMonthTabs');
 const invMonthContent = document.getElementById('invMonthContent');
 const invEmptyMsg     = document.getElementById('inv-empty-msg');
-let   lastActiveInvPeriod = null;
+let   lastActiveInvPeriod  = null;
+const invSummaryByPeriod   = {};
 let   invFilter           = 'all';   // 'all' | 'draft' | 'sent' | 'overdue' | 'paid'
 const invHistoryCache     = {};       // period → full list including superseded
 
@@ -3092,14 +3131,12 @@ async function loadInvoicesMainView() {
       const sbadge = h.sent    ? `<span class="badge bg-primary ms-1"   style="font-size:.6rem">${h.sent}s</span>`     : '';
       const pbadge = h.paid    ? `<span class="badge bg-success ms-1"   style="font-size:.6rem">${h.paid}p</span>`     : '';
       const obadge = h.overdue ? `<span class="badge bg-danger ms-1"    style="font-size:.6rem">${h.overdue}!</span>`  : '';
-      const lbadge = h.labor_total    ? `<span class="badge bg-success me-1"                              style="font-size:.55rem">$${h.labor_total.toFixed(0)} labor</span>`    : '';
-      const xbadge = h.personal_total ? `<span class="badge me-1" style="background:#7c3aed;font-size:.55rem">$${h.personal_total.toFixed(0)} personal</span>` : '';
-      const revLine = (lbadge || xbadge) ? `<br><small>${lbadge}${xbadge}</small>` : '';
+      invSummaryByPeriod[h.period] = h;
       return `<li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
                 data-bs-toggle="tab" data-bs-target="#inv-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
-          ${formatPeriodLabel(h.period)}${badge}${sbadge}${pbadge}${obadge}${revLine}
+          ${formatPeriodLabel(h.period)}${badge}${sbadge}${pbadge}${obadge}
         </button>
       </li>`;
     }).join('');
@@ -3147,6 +3184,14 @@ function renderInvList(container, period, invs) {
     return;
   }
 
+  // Revenue summary badges
+  const sm = invSummaryByPeriod[period] || {};
+  let revHtml = '<div class="d-flex gap-2 flex-wrap mb-3">';
+  if (sm.labor_total)    revHtml += `<span class="badge bg-success px-3 py-2" style="font-size:.8rem">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
+  if (sm.tools_total)    revHtml += `<span class="badge bg-primary px-3 py-2" style="font-size:.8rem">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
+  if (sm.personal_total) revHtml += `<span class="badge px-3 py-2" style="background:#db2777;font-size:.8rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
+  revHtml += '</div>';
+
   // Filter
   const filtered = invs.filter(inv => {
     if (invFilter === 'all')     return true;
@@ -3178,13 +3223,13 @@ function renderInvList(container, period, invs) {
     </div>`;
 
   if (!filtered.length) {
-    container.innerHTML = subtotalHtml +
+    container.innerHTML = revHtml + subtotalHtml +
       `<p class="text-muted small py-3">No ${invFilter} invoices for this period.</p>`;
     return;
   }
 
   const sorted = [...filtered].sort((a, b) => a.bill_to_name.localeCompare(b.bill_to_name));
-  let html = subtotalHtml + `<div class="row g-3">`;
+  let html = revHtml + subtotalHtml + `<div class="row g-3">`;
 
   sorted.forEach(inv => {
     const statusKey = inv.status || 'draft';

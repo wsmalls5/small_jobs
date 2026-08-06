@@ -1160,7 +1160,7 @@ def _save_invoices(period, invoices):
 
 # ── Invoice routes ───────────────────────────────────────────────────────────
 
-_NON_BILLABLE_TYPES = {"personal"}
+_NON_BILLABLE_TYPES = {"personal", "tools"}
 _NON_BILLABLE_KEYS  = {"personal_tools"}
 
 @app.route("/invoices")
@@ -1196,13 +1196,20 @@ def api_invoices_list():
 
             labor_total = round(sum(i.get("labor_subtotal", 0) for i in active), 2)
 
+            tools_total    = 0.0
             personal_total = 0.0
             ep = EXPENSES / f"expenses_{period}.json"
             if ep.exists():
                 for r in json.loads(ep.read_text(encoding="utf-8-sig")):
                     for item in r.get("items", []):
-                        if item.get("customer_key", "") in non_billable_keys:
-                            personal_total += float(item.get("amount", 0))
+                        ck    = item.get("customer_key", "")
+                        amt   = float(item.get("amount", 0))
+                        ctype = db.get(ck, {}).get("customer_type", "")
+                        if ck in _NON_BILLABLE_KEYS or ctype == "tools":
+                            tools_total += amt
+                        elif ctype == "personal":
+                            personal_total += amt
+            tools_total    = round(tools_total, 2)
             personal_total = round(personal_total, 2)
 
             out.append({
@@ -1213,6 +1220,7 @@ def api_invoices_list():
                 "paid":           sum(1 for i in active if i.get("status") == "paid"),
                 "overdue":        sum(1 for i in active if _is_overdue(i)),
                 "labor_total":    labor_total,
+                "tools_total":    tools_total,
                 "personal_total": personal_total,
             })
         except Exception:
