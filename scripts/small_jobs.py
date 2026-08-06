@@ -1255,8 +1255,9 @@ def api_invoices_list():
 
             labor_total = round(sum(i.get("labor_subtotal", 0) for i in active), 2)
 
-            tools_total    = 0.0
-            personal_total = 0.0
+            tools_total     = 0.0
+            personal_total  = 0.0
+            materials_total = 0.0  # expenses assigned to real (billable) customers
             ep = EXPENSES / f"expenses_{period}.json"
             if ep.exists():
                 for r in json.loads(ep.read_text(encoding="utf-8-sig")):
@@ -1268,19 +1269,23 @@ def api_invoices_list():
                             tools_total += amt
                         elif ctype == "personal":
                             personal_total += amt
-            tools_total    = round(tools_total, 2)
-            personal_total = round(personal_total, 2)
+                        elif ck and ctype not in _NON_BILLABLE_TYPES:
+                            materials_total += amt
+            tools_total     = round(tools_total, 2)
+            personal_total  = round(personal_total, 2)
+            materials_total = round(materials_total, 2)
 
             out.append({
-                "period":         period,
-                "count":          len(active),
-                "draft":          sum(1 for i in active if i.get("status") == "draft"),
-                "sent":           sum(1 for i in active if i.get("status") == "sent"),
-                "paid":           sum(1 for i in active if i.get("status") == "paid"),
-                "overdue":        sum(1 for i in active if _is_overdue(i)),
-                "labor_total":    labor_total,
-                "tools_total":    tools_total,
-                "personal_total": personal_total,
+                "period":           period,
+                "count":            len(active),
+                "draft":            sum(1 for i in active if i.get("status") == "draft"),
+                "sent":             sum(1 for i in active if i.get("status") == "sent"),
+                "paid":             sum(1 for i in active if i.get("status") == "paid"),
+                "overdue":          sum(1 for i in active if _is_overdue(i)),
+                "labor_total":      labor_total,
+                "tools_total":      tools_total,
+                "personal_total":   personal_total,
+                "materials_total":  materials_total,
             })
         except Exception:
             pass
@@ -1320,14 +1325,6 @@ def generate_invoices(period):
     body            = request.get_json() or {}
     target_customer = body.get("customer_key")  # None = all customers
     db              = _load_customers()
-
-    # Block generation if any receipts for this period are marked pending_review
-    ep = EXPENSES / f"expenses_{period}.json"
-    if ep.exists():
-        pending = [r for r in json.loads(ep.read_text(encoding="utf-8-sig")) if r.get("pending_review")]
-        if pending:
-            vendors = ", ".join(r.get("vendor", "?") for r in pending[:3])
-            return jsonify({"ok": False, "error": f"{len(pending)} receipt(s) are still marked 'Save for Later' ({vendors}…). Review them before generating invoices."}), 200
 
     # Parse period
     year, month  = int(period.split("_")[0]), int(period.split("_")[1])

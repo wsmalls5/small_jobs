@@ -163,8 +163,10 @@
   }
   .rcpt-row-flash { animation: rcpt-row-flash 1.4s ease-out; }
   .rcpt-row-new   { background: #dcfce7 !important; }
-  #inv-filter-group .btn:first-child { border-radius: 1rem 0 0 1rem !important; }
-  #inv-filter-group .btn:last-child  { border-radius: 0 1rem 1rem 0 !important; }
+  #inv-filter-group .btn:first-child,
+  .inv-status-group .btn:first-child { border-radius: 1rem 0 0 1rem !important; }
+  #inv-filter-group .btn:last-child,
+  .inv-status-group .btn:last-child  { border-radius: 0 1rem 1rem 0 !important; }
 </style>
 </head>
 <body>
@@ -436,10 +438,11 @@
               <div class="d-flex gap-2 align-items-center">
                 <button class="btn btn-sm btn-outline-secondary" id="save-cancel-btn">&#8592; Cancel</button>
                 <button class="btn btn-sm btn-outline-danger" id="rcpt-edit-del-btn" style="display:none">Delete</button>
+                <button class="btn btn-sm" id="save-for-later-btn"
+                        style="background:#fff;border:1.5px solid #fbbf24;color:#92400e">Save for Later</button>
                 <span id="pending-review-badge" class="badge ms-1" style="background:#b45309;display:none">&#9888; Pending Review</span>
               </div>
               <div class="d-flex gap-2">
-                <button class="btn btn-warning px-3" id="save-for-later-btn">Save for Later</button>
                 <button class="btn btn-primary px-4" id="save-btn">Save Receipt</button>
               </div>
             </div>
@@ -3238,9 +3241,10 @@ function renderInvList(container, period, invs) {
   // Revenue summary badges (left side of header)
   const sm = invSummaryByPeriod[period] || {};
   let badgesHtml = '';
-  if (sm.labor_total)    badgesHtml += `<span class="badge bg-success px-3 py-2" style="font-size:.8rem">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
-  if (sm.tools_total)    badgesHtml += `<span class="badge bg-primary px-3 py-2" style="font-size:.8rem">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
-  if (sm.personal_total) badgesHtml += `<span class="badge px-3 py-2" style="background:#db2777;font-size:.8rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
+  if (sm.labor_total)     badgesHtml += `<span class="badge bg-success px-3 py-2" style="font-size:.72rem">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
+  if (sm.tools_total)     badgesHtml += `<span class="badge bg-primary px-3 py-2" style="font-size:.72rem">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
+  if (sm.materials_total) badgesHtml += `<span class="badge px-3 py-2" style="background:#f97316;font-size:.72rem">$${sm.materials_total.toFixed(2)} Customer Materials</span>`;
+  if (sm.personal_total)  badgesHtml += `<span class="badge px-3 py-2" style="background:#fce7f3;color:#be185d;font-size:.72rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
 
   // Filter
   const filtered = invs.filter(inv => {
@@ -3315,7 +3319,8 @@ function renderInvList(container, period, invs) {
                 onclick="setInvStatus('${escHtml(period)}','${escHtml(inv.invoice_id)}','${s}','${escHtml(statusKey)}')">${label}</button>`;
     }).join('');
 
-    const regenBtn = `<button class="btn btn-sm btn-secondary"
+    const regenBtn = `<button class="btn btn-sm"
+      style="background:#7c3aed;border-color:#7c3aed;color:#fff"
       onclick="regenInvoice('${escHtml(period)}','${escHtml(inv.invoice_id)}','${escHtml(inv.customer_key)}')"
       title="Regenerate from current hours &amp; expenses">&#8635; Regen</button>`;
     const deleteBtn = statusKey === 'draft'
@@ -3358,15 +3363,15 @@ function renderInvList(container, period, invs) {
         </div>
         <div class="card-footer bg-transparent pt-2 pb-2">
           <div class="d-flex gap-1 justify-content-between align-items-center flex-wrap">
-            <div class="btn-group btn-group-sm">${statusBtns}</div>
+            <div class="btn-group btn-group-sm inv-status-group">${statusBtns}</div>
             <div class="d-flex gap-1">
               <a href="/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print" target="_blank"
-                 class="btn btn-sm btn-dark">&#128438;</a>
+                 class="btn btn-sm btn-dark">Preview &#128438;</a>
               ${emailAddr
                 ? `<button class="btn btn-sm btn-primary"
                      onclick="openEmailModal('${escHtml(period)}','${escHtml(inv.invoice_id)}','${escHtml(emailAddr)}','${escHtml(inv.bill_to_name)}')"
-                     title="Email invoice to ${escHtml(emailAddr)}">&#9993;</button>`
-                : `<button class="btn btn-sm btn-primary" disabled title="No email on file">&#9993;</button>`}
+                     title="Email invoice to ${escHtml(emailAddr)}">Email &#9993;</button>`
+                : `<button class="btn btn-sm btn-primary" disabled title="No email on file">Email &#9993;</button>`}
               ${regenBtn}
               ${deleteBtn}
             </div>
@@ -3502,8 +3507,14 @@ document.getElementById('inv-generate-btn').addEventListener('click', async () =
 document.getElementById('inv-gen-confirm-btn').addEventListener('click', async () => {
   const period = document.getElementById('inv-gen-period-select').value;
   if (!period) { showToast('Select a month first', 'warning'); return; }
-  // Warn (don't block) if unassigned receipt items exist in this period
+  // Warn (don't block) if pending-review receipts exist in this period
   const periodReceipts = rcptDataCache[period] || [];
+  const pendingCount = periodReceipts.filter(r => r.pending_review).length;
+  if (pendingCount > 0) {
+    const ok = confirm(`${pendingCount} receipt${pendingCount!==1?' are':' is'} still marked "Save for Later" and won't be included in invoices. Generate anyway?`);
+    if (!ok) return;
+  }
+  // Warn (don't block) if unassigned receipt items exist in this period
   const unassignedCount = periodReceipts.filter(r =>
     !r.pending_review && (r.items||[]).some(it => !it.customer_key)
   ).length;
