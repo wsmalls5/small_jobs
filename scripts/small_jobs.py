@@ -1543,11 +1543,16 @@ def email_invoice(period, invoice_id):
 
     try:
         ctx = ssl.create_default_context()
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls(context=ctx)
-            server.login(SMTP_USER, SMTP_PASS)
-            server.sendmail(EMAIL_FROM, recipient, msg.as_string())
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as server:
+                server.login(SMTP_USER, SMTP_PASS)
+                server.sendmail(EMAIL_FROM, recipient, msg.as_string())
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.ehlo()
+                server.starttls(context=ctx)
+                server.login(SMTP_USER, SMTP_PASS)
+                server.sendmail(EMAIL_FROM, recipient, msg.as_string())
     except Exception as e:
         return jsonify({"error": f"SMTP error: {str(e)}"}), 500
 
