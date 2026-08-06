@@ -162,6 +162,7 @@
     100% { background-color: transparent; }
   }
   .rcpt-row-flash { animation: rcpt-row-flash 1.4s ease-out; }
+  .rcpt-row-new   { background: #dcfce7 !important; }
   #inv-filter-group .btn:first-child { border-radius: 1rem 0 0 1rem !important; }
   #inv-filter-group .btn:last-child  { border-radius: 0 1rem 1rem 0 !important; }
 </style>
@@ -1034,6 +1035,7 @@ function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], show
   const groups = {};
   S.customers.forEach(c => {
     if (excludeTypes.includes(c.type)) return;
+    if (c.key === 'personal_tools') return;  // legacy combined entry, replaced by 'tools' and 'personal'
     if (!groups[c.type]) groups[c.type] = [];
     groups[c.type].push(c);
   });
@@ -1413,8 +1415,9 @@ document.getElementById('calc-split-tax-btn').addEventListener('click', () => {
   showToast(`Split tax $${totalTax.toFixed(2)} across ${keys.length} customers`, 'success');
 });
 
-let _savedScrollY    = -1;  // scroll position captured when entering edit
+let _savedScrollY    = -1;   // scroll position captured when entering edit
 let _pendingFlashId  = null; // receipt id to flash after returning to table
+let _lastImportedId  = null; // receipt id of most recent new save (green highlight)
 
 function showReceiptsTable() {
   S.editPeriod    = null;
@@ -1562,7 +1565,9 @@ function _rcptByDateRow(r, period) {
   const custChips = custNames.length
     ? custNames.map(n => `<span class="badge bg-secondary me-1" style="font-size:.6rem;font-weight:500">${escHtml(n)}</span>`).join('')
     : '—';
-  const rowStyle = r.pending_review ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
+  const rowStyle = r.pending_review        ? 'cursor:pointer;background:#fffde7'
+                 : r.id === _lastImportedId ? 'cursor:pointer;background:#dcfce7'
+                 : 'cursor:pointer';
   return `<tr style="${rowStyle}" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}">
     <td class="fw-semibold small">${escHtml(r.vendor||'—')}</td>
     <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
@@ -1576,8 +1581,10 @@ function renderRcptByDate(container, receipts, period) {
     container.innerHTML = '<p class="text-muted small py-3">No receipts for this period.</p>';
     return;
   }
-  const pending  = receipts.filter(r => r.pending_review);
-  const regular  = receipts.filter(r => !r.pending_review);
+  const pending          = receipts.filter(r => r.pending_review);
+  const allRegular       = receipts.filter(r => !r.pending_review);
+  const unassignedRcpts  = allRegular.filter(r => (r.items||[]).some(it => !it.customer_key));
+  const regular          = allRegular.filter(r => !(r.items||[]).some(it => !it.customer_key));
   const grandTotal = receipts.reduce((s, r) => s + (r.receipt_total || 0), 0);
   const uniqueCusts = new Set(receipts.flatMap(r => (r.items||[]).map(i => i.customer_key).filter(Boolean))).size;
   const custText = uniqueCusts ? ` &middot; ${uniqueCusts} Customer${uniqueCusts!==1?'s':''}` : '';
@@ -1601,6 +1608,27 @@ function renderRcptByDate(container, receipts, period) {
             <colgroup><col style="width:30%"><col style="width:80px"><col style="width:90px"><col></colgroup>
             <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${pendRows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if (unassignedRcpts.length) {
+    const unassTotal = unassignedRcpts.reduce((s, r) => s + (r.receipt_total || 0), 0);
+    const unassRows  = unassignedRcpts.map(r => _rcptByDateRow(r, period)).join('');
+    html += `<div class="mb-3">
+      <div class="fw-semibold small mb-2" style="color:#be185d;border-top:2px solid #f9a8d4;padding-top:.6rem">&#9888; Receipts With Unassigned Items</div>
+      <div class="hours-job-header" style="background:#fdf2f8;border-color:#f9a8d4">
+        <span>${unassignedRcpts.length} receipt${unassignedRcpts.length!==1?'s':''}</span>
+        <span class="text-muted fw-normal">$${unassTotal.toFixed(2)}</span>
+      </div>
+      <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #f9a8d4 !important;border-top:none !important;">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
+            <colgroup><col style="width:30%"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
+            <tbody>${unassRows}</tbody>
           </table>
         </div>
       </div>
@@ -1680,7 +1708,9 @@ function renderRcptByJob(container, receipts, period) {
   </div>`;
   const makeItemRow = item => {
     const splitBadge = item.is_split ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
-    const rowStyle = item.is_pending ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
+    const rowStyle = item.is_pending                  ? 'cursor:pointer;background:#fffde7'
+                   : item.receipt_id === _lastImportedId ? 'cursor:pointer;background:#dcfce7'
+                   : 'cursor:pointer';
     return `<tr style="${rowStyle}" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}">
       <td class="text-muted small" style="width:90px;white-space:nowrap">${escHtml(item.date||'')}</td>
       <td class="text-muted small" style="width:110px">${escHtml(item.vendor||'')}</td>
@@ -1708,12 +1738,12 @@ function renderRcptByJob(container, receipts, period) {
     html += `<div class="fw-semibold small mb-2" style="color:#b45309;border-top:2px solid #fbbf24;padding-top:.6rem">&#9888; Unsubmitted / Under Review</div>`;
     html += makeBlock('Pending Review', { items: pendingItems, total: pendingItems.reduce((s,i) => s+i.amount, 0) }, 'background:#fffbeb;border-color:#fcd34d');
   }
+  if (unassigned.length) {
+    html += `<div class="fw-semibold small mb-2" style="color:#be185d;border-top:2px solid #f9a8d4;padding-top:.6rem">&#9888; Unassigned Items</div>`;
+    html += makeBlock('Unassigned', { items: unassigned, total: unassigned.reduce((s,i) => s+i.amount, 0) }, 'background:#fdf2f8;border-color:#f9a8d4');
+  }
   Object.values(buckets).sort((a,b) => a.label.localeCompare(b.label))
     .forEach(b => { html += makeBlock(b.label, b, ''); });
-  if (unassigned.length) {
-    html += `<div class="fw-semibold small mt-4 mb-2" style="color:#b45309;border-top:2px solid #fbbf24;padding-top:.6rem">&#9888; Unassigned Items</div>`;
-    html += makeBlock('Unassigned', { items: unassigned, total: unassigned.reduce((s,i) => s+i.amount, 0) }, 'background:#fffbeb;border-color:#fcd34d');
-  }
   container.innerHTML = html;
   container.querySelectorAll('tr[data-id]').forEach(row =>
     row.addEventListener('click', () => loadReceiptForEdit(row.dataset.period, row.dataset.id)));
@@ -2010,13 +2040,14 @@ saveBtn.addEventListener('click', async () => {
     customer_key: S.singleJob ? singleSelect.value : it.customer_key,
     amount: parseFloat(it.amount) || 0,
   }));
-  // Warn if receipt date is 2+ months before current month
+  // Block save if receipt date is 2+ months before current month (confirm required)
   if (dateInput.value) {
     const rd = new Date(dateInput.value + 'T00:00:00');
     const now = new Date();
     const monthsDiff = (now.getFullYear() - rd.getFullYear()) * 12 + (now.getMonth() - rd.getMonth());
     if (monthsDiff >= 2) {
-      showToast(`Heads up: this receipt date is in ${rd.toLocaleString('default',{month:'long',year:'numeric'})} — ${monthsDiff} months ago.`, 'warning');
+      const ok = confirm(`This receipt is dated ${rd.toLocaleString('default',{month:'long',year:'numeric'})} — ${monthsDiff} month${monthsDiff!==1?'s':''} ago. Proceed anyway?`);
+      if (!ok) return;
     }
   }
   const payload = {
@@ -2049,6 +2080,7 @@ saveBtn.addEventListener('click', async () => {
       res  = await fetch('/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
       data = await res.json();
       if (data.ok) {
+        _lastImportedId = data.id;  // green-highlight this row after re-render
         showToast(`Saved to ${data.file}`, 'success');
         // Move inbox source to Reviewed folder after successful save
         if (S.inboxSource) {
@@ -3293,7 +3325,7 @@ function renderInvList(container, period, invs) {
 
     html += `
     <div class="col-12 col-md-6 col-xl-4" id="inv-card-${escHtml(inv.invoice_id)}">
-      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#dc3545' : ''}">
+      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#dc3545' : inv.stale ? 'border:2px solid #f97316' : ''}">
         <div class="card-body pb-2">
           <div class="d-flex justify-content-between align-items-start mb-1">
             <div>
@@ -3307,6 +3339,7 @@ function renderInvList(container, period, invs) {
             </div>
             <div class="text-end">
               ${STATUS_BADGE[statusKey]}${overdueBadge}
+              ${inv.stale ? '<div class="mt-1"><span class="badge" style="background:#f97316;font-size:.6rem" title="Hours or expenses were added after this invoice was generated">&#9888; Changed</span></div>' : ''}
               <div class="fw-bold text-success mt-1">$${inv.total.toFixed(2)}</div>
             </div>
           </div>
@@ -3469,6 +3502,15 @@ document.getElementById('inv-generate-btn').addEventListener('click', async () =
 document.getElementById('inv-gen-confirm-btn').addEventListener('click', async () => {
   const period = document.getElementById('inv-gen-period-select').value;
   if (!period) { showToast('Select a month first', 'warning'); return; }
+  // Warn (don't block) if unassigned receipt items exist in this period
+  const periodReceipts = rcptDataCache[period] || [];
+  const unassignedCount = periodReceipts.filter(r =>
+    !r.pending_review && (r.items||[]).some(it => !it.customer_key)
+  ).length;
+  if (unassignedCount > 0) {
+    const ok = confirm(`${unassignedCount} receipt${unassignedCount!==1?' have':' has'} unassigned items — those items won't appear on any invoice. Generate anyway?`);
+    if (!ok) return;
+  }
   bootstrap.Modal.getInstance(document.getElementById('invGenerateModal')).hide();
   const btn = document.getElementById('inv-generate-btn');
   btn.disabled = true; btn.textContent = 'Generating…';

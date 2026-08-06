@@ -864,6 +864,8 @@ def api_save():
     tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(str(tmp), str(month_file))
 
+    cust_keys = {i.get("customer_key","") for i in items if i.get("customer_key","")}
+    _mark_invoices_stale(f"{dt.year}_{dt.month:02d}", cust_keys)
     return jsonify({"ok": True, "file": month_file.name, "id": record["id"]})
 
 
@@ -962,6 +964,8 @@ def update_receipt(period, receipt_id):
         tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(str(tmp), str(fp))
 
+    cust_keys = {i.get("customer_key","") for i in items if i.get("customer_key","")}
+    _mark_invoices_stale(new_period, cust_keys)
     return jsonify({"ok": True, "period": new_period})
 
 
@@ -1013,6 +1017,7 @@ def update_hours_entry(period, entry_id):
     for field in ("date", "in_time", "out_time", "hours", "memo", "customer_key", "property_label", "job_raw"):
         if field in body:
             entries[idx][field] = body[field]
+    entry_ck = entries[idx].get("customer_key", "")  # capture before possible pop
 
     # Check if the date crossed into a different month — migrate if so
     new_date = entries[idx].get("date", "")
@@ -1045,6 +1050,8 @@ def update_hours_entry(period, entry_id):
         tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
         os.replace(str(tmp), str(fp))
 
+    if entry_ck:
+        _mark_invoices_stale(new_period, {entry_ck})
     return jsonify({"ok": True, "period": new_period})
 
 
@@ -1122,6 +1129,9 @@ def create_hours_entry(period):
     tmp = fp.with_suffix(".tmp")
     tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(str(tmp), str(fp))
+    ck = body.get("customer_key", "")
+    if ck:
+        _mark_invoices_stale(actual_period, {ck})
     return jsonify({"ok": True, "entry_id": entry["entry_id"], "period": actual_period})
 
 
@@ -1187,6 +1197,24 @@ def _save_invoices(period, invoices):
     tmp = fp.with_suffix(".tmp")
     tmp.write_text(json.dumps(invoices, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(str(tmp), str(fp))
+
+
+def _mark_invoices_stale(period, customer_keys):
+    """Set stale=True on any non-superseded invoices for customer_keys in period."""
+    if not customer_keys:
+        return
+    inv_file = INVOICES / f"invoices_{period}.json"
+    if not inv_file.exists():
+        return
+    invoices = json.loads(inv_file.read_text(encoding="utf-8-sig"))
+    changed = False
+    for inv in invoices:
+        if not inv.get("superseded") and inv.get("customer_key") in customer_keys:
+            if not inv.get("stale"):
+                inv["stale"] = True
+                changed = True
+    if changed:
+        _save_invoices(period, invoices)
 
 
 # ── Invoice routes ───────────────────────────────────────────────────────────
@@ -1425,6 +1453,8 @@ def generate_invoices(period):
                     "net_days":            net_days,
                     "regenerated_at":      now,
                     "version":             old.get("version", 1) + 1,
+                    "stale":               False,
+                    "generated_at":        now,
                 })
                 generated.append(old["invoice_id"])
             else:
@@ -1488,6 +1518,8 @@ def _build_invoice(inv_id, ck, cust, period, invoice_date, month_name,
         "deposit":             0.0,
         "total":               invoice_subtotal,
         "notes":               "",
+        "stale":               False,
+        "generated_at":        now,
     }
 
 
