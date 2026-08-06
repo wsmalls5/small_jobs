@@ -1530,14 +1530,17 @@ function renderRcptByDate(container, receipts, period) {
       const custNames = [...new Set((r.items||[]).map(i => {
         const c = S.custsByKey?.[i.customer_key];
         return c ? c.property_label : (i.property_label || '');
-      }).filter(Boolean))].join(', ');
+      }).filter(Boolean))];
       const isMulti = new Set((r.items||[]).map(i => i.customer_key||'').filter(Boolean)).size > 1;
       const splitBadge = isMulti ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
+      const custChips = custNames.length
+        ? custNames.map(n => `<span class="badge bg-secondary me-1" style="font-size:.6rem;font-weight:500">${escHtml(n)}</span>`).join('')
+        : '—';
       return `<tr style="cursor:pointer" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}">
         <td class="fw-semibold small">${escHtml(r.vendor||'—')}</td>
         <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
         <td class="text-primary fw-semibold small">$${(r.receipt_total||0).toFixed(2)}</td>
-        <td class="text-muted small">${escHtml(custNames||'—')}${splitBadge}</td>
+        <td>${custChips}${splitBadge}</td>
       </tr>`;
     }).join('');
     html += `<div class="mb-3">
