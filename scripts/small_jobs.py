@@ -1282,6 +1282,7 @@ def api_invoices_list():
                 "sent":             sum(1 for i in active if i.get("status") == "sent"),
                 "paid":             sum(1 for i in active if i.get("status") == "paid"),
                 "overdue":          sum(1 for i in active if _is_overdue(i)),
+                "stale":            sum(1 for i in active if i.get("stale")),
                 "labor_total":      labor_total,
                 "tools_total":      tools_total,
                 "personal_total":   personal_total,
@@ -1438,8 +1439,12 @@ def generate_invoices(period):
         if ck in active_by_ck:
             old = active_by_ck[ck]
             if old.get("status") == "draft":
-                # Overwrite draft in-place
+                # Overwrite draft in-place — refresh contact info too in case customer was edited
                 old.update({
+                    "bill_to_name":        cust.get("bill_to_name") or cust.get("property_label", ck),
+                    "bill_to_address":     cust.get("address", ""),
+                    "bill_to_phone":       cust.get("phone", ""),
+                    "bill_to_email":       cust.get("email", ""),
                     "labor_entries":       labor_entries,
                     "material_entries":    material_entries,
                     "labor_subtotal":      labor_subtotal,

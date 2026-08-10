@@ -75,7 +75,7 @@
   /* ── Type badges ── */
   .type-badge { font-size:.72rem; font-weight:600; padding:.2em .55em; border-radius:.3em; }
   .type-rental_advisor { background:#dbeafe; color:#1e40af; }
-  .type-hoa            { background:#dcfce7; color:#166534; }
+  .type-hoa            { background:#f0fdf4; color:#166534; }
   .type-multi_property { background:#fef9c3; color:#854d0e; }
   .type-individual     { background:#ede9fe; color:#5b21b6; }
   .type-personal       { background:#fce7f3; color:#9d174d; }
@@ -162,11 +162,14 @@
     100% { background-color: transparent; }
   }
   .rcpt-row-flash { animation: rcpt-row-flash 1.4s ease-out; }
-  .rcpt-row-new   { background: #dcfce7 !important; }
+  .rcpt-row-new > td, .rcpt-row-new > th { background-color: #f0fdf4 !important; }
   #inv-filter-group .btn:first-child,
   .inv-status-group .btn:first-child { border-radius: 1rem 0 0 1rem !important; }
   #inv-filter-group .btn:last-child,
   .inv-status-group .btn:last-child  { border-radius: 0 1rem 1rem 0 !important; }
+  .inv-card-footer .btn, .inv-card-footer .inv-status-group .btn { font-size: .74rem; padding: .18rem .42rem; }
+  .inv-card-footer .inv-status-group .btn:first-child { border-radius: 1rem 0 0 1rem !important; }
+  .inv-card-footer .inv-status-group .btn:last-child  { border-radius: 0 1rem 1rem 0 !important; }
 </style>
 </head>
 <body>
@@ -193,6 +196,10 @@
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="tab-invoices-btn" data-bs-toggle="tab"
               data-bs-target="#tab-invoices" type="button" role="tab">Invoices</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-financials-btn" data-bs-toggle="tab"
+              data-bs-target="#tab-financials" type="button" role="tab">Financials</button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="tab-tasks-btn" data-bs-toggle="tab"
@@ -284,7 +291,12 @@
 
         <!-- Receipts sub-pane -->
         <div id="rcpt-sub-receipts" class="pt-3">
-          <ul class="nav nav-tabs mb-0" id="rcptMonthTabs" role="tablist"></ul>
+          <div class="d-flex align-items-end">
+            <ul class="nav nav-tabs mb-0 flex-grow-1" id="rcptMonthTabs" role="tablist"></ul>
+            <span class="text-muted pb-1 ps-3" style="font-size:.7rem;white-space:nowrap">
+              <span style="display:inline-block;width:10px;height:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:2px;vertical-align:middle;margin-right:3px"></span>= last saved row
+            </span>
+          </div>
           <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="rcptMonthContent"></div>
           <div id="rcpt-empty-msg" class="text-center text-muted py-5" style="display:none">
             <div style="font-size:2.5rem">&#x1f9fe;</div>
@@ -543,6 +555,10 @@
     <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
       <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Invoices</h6>
       <div class="d-flex gap-2 align-items-center">
+        <div class="btn-group btn-group-sm" id="inv-view-toggle" role="group">
+          <button type="button" class="btn btn-dark" data-invview="cards">Cards</button>
+          <button type="button" class="btn btn-outline-secondary" data-invview="table">Table</button>
+        </div>
         <button id="inv-net-days-btn" class="btn btn-sm btn-outline-danger" title="Click to change net days">Net20 days</button>
         <input type="number" id="inv-net-days-input" min="1" max="365" value="20" placeholder="days">
         <div class="btn-group btn-group-sm" id="inv-filter-group" role="group">
@@ -552,7 +568,8 @@
           <button type="button" class="btn btn-outline-success"  data-filter="paid">Paid</button>
           <button type="button" class="btn btn-outline-danger"   data-filter="overdue">Overdue</button>
         </div>
-        <button class="btn btn-sm btn-success" id="inv-generate-btn">&#9889; Generate Invoices &#9889;</button>
+        <button class="btn btn-sm btn-primary" id="inv-solo-btn">&#9889; Generate Single Invoice &#9889;</button>
+        <button class="btn btn-sm btn-success" id="inv-generate-btn">&#9889; Generate All Invoices &#9889;</button>
       </div>
     </div>
     <div class="px-4 pt-3">
@@ -565,7 +582,21 @@
     </div>
   </div>
 
-  <!-- ══════════════════════ TAB 5: TASKS ══════════════════════ -->
+  <!-- ══════════════════════ TAB 5: FINANCIALS ══════════════════════ -->
+  <div class="tab-pane fade" id="tab-financials" role="tabpanel">
+    <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
+      <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Financials</h6>
+    </div>
+    <div class="px-4 pt-3" id="fin-content">
+      <ul class="nav nav-tabs mb-0" id="fin-year-tabs" role="tablist"></ul>
+      <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="fin-year-content"></div>
+      <div id="fin-empty-msg" class="text-center text-muted py-5" style="display:none">
+        <p class="mt-2">No financial data yet.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB 6: TASKS ══════════════════════ -->
   <div class="tab-pane fade" id="tab-tasks" role="tabpanel">
     <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
       <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Tasks</h6>
@@ -884,6 +915,27 @@
   </div>
 </div>
 
+<div class="modal fade" id="invSoloModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" style="font-size:1rem">Generate: solo invoice</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Period: <strong id="inv-solo-period-label"></strong></p>
+        <label class="form-label fw-semibold small">Customer:</label>
+        <select id="inv-solo-customer-select" class="form-select form-select-sm mb-2"></select>
+        <p class="text-muted small mb-0">Only shows customers with hours or expenses this month who don't yet have an invoice.</p>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="inv-solo-confirm-btn">&#9889; Generate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="/static/bootstrap.bundle.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -1042,7 +1094,7 @@ function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], show
     if (!groups[c.type]) groups[c.type] = [];
     groups[c.type].push(c);
   });
-  ['rental_advisor','hoa','multi_property','individual','tools','personal'].forEach(type => {
+  ['tools','personal','rental_advisor','hoa','multi_property','individual'].forEach(type => {
     if (excludeTypes.includes(type) || !groups[type]) return;
     const og = document.createElement('optgroup');
     og.label = TYPE_LABELS[type] || type;
@@ -1420,7 +1472,8 @@ document.getElementById('calc-split-tax-btn').addEventListener('click', () => {
 
 let _savedScrollY    = -1;   // scroll position captured when entering edit
 let _pendingFlashId  = null; // receipt id to flash after returning to table
-let _lastImportedId  = null; // receipt id of most recent new save (green highlight)
+let _lastImportedId      = null; // receipt id of most recent new save/edit (green highlight)
+let _lastImportedHoursId = null; // hours entry_id of most recent save/edit (green highlight)
 
 function showReceiptsTable() {
   S.editPeriod    = null;
@@ -1502,14 +1555,16 @@ async function loadReceiptsMainView() {
     const activePeriod = (lastActiveRcptPeriod && data.some(h => h.period === lastActiveRcptPeriod))
                          ? lastActiveRcptPeriod : newestPeriod;
     tabs.innerHTML = data.map(h => {
-      const hasPending = (h.records||[]).some(r => r.pending_review);
-      const pendingDot = hasPending ? ' <span title="Has pending receipts" style="color:#d97706">&#9888;</span>' : '';
+      const hasPending    = (h.records||[]).some(r => r.pending_review);
+      const hasUnassigned = (h.records||[]).some(r => !r.pending_review && (r.items||[]).some(i => !i.customer_key));
+      const pendingDot    = hasPending    ? ' <span title="Has receipts pending review" style="color:#d97706">&#9888;</span>' : '';
+      const unassignDot   = hasUnassigned ? ' <span title="Has receipts with unassigned items" style="color:#be185d">&#9888;</span>' : '';
       return `<li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
                 data-bs-toggle="tab" data-bs-target="#rcpt-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
-          ${formatPeriodLabel(h.period)}${pendingDot}
-          <span class="badge bg-secondary ms-1" style="font-size:.65rem">$${h.total.toFixed(2)}</span>
+          ${formatPeriodLabel(h.period)}${pendingDot}${unassignDot}
+          <span class="badge bg-success ms-1" style="font-size:.65rem">$${h.total.toFixed(2)}</span>
         </button>
       </li>`;
     }).join('');
@@ -1522,9 +1577,11 @@ async function loadReceiptsMainView() {
     renderRcptPeriod(activePeriod);
 
     // Restore scroll position and flash the updated row if returning from edit
-    if (_savedScrollY >= 0 || _pendingFlashId) {
+    // Also apply green highlight to the most recently saved/updated receipt
+    if (_savedScrollY >= 0 || _pendingFlashId || _lastImportedId) {
       const targetY  = _savedScrollY;
       const flashId  = _pendingFlashId;
+      const greenId  = _lastImportedId;
       _savedScrollY   = -1;
       _pendingFlashId = null;
       requestAnimationFrame(() => {
@@ -1535,6 +1592,11 @@ async function loadReceiptsMainView() {
             row.classList.add('rcpt-row-flash');
             row.addEventListener('animationend', () => row.classList.remove('rcpt-row-flash'), { once: true });
           }
+        }
+        if (greenId) {
+          document.querySelectorAll(`tr[data-id="${greenId}"]`).forEach(row => {
+            row.classList.add('rcpt-row-new');
+          });
         }
       });
     }
@@ -1559,21 +1621,24 @@ function renderRcptPeriod(period) {
 }
 
 function _rcptByDateRow(r, period) {
-  const custNames = [...new Set((r.items||[]).map(i => {
+  const custItems = [...new Map((r.items||[]).map(i => {
     const c = S.custsByKey?.[i.customer_key];
-    return c ? c.property_label : (i.property_label || '');
-  }).filter(Boolean))];
+    const nm = c ? c.property_label : (i.property_label || '');
+    return nm ? [nm, {nm, type: c?.customer_type || ''}] : null;
+  }).filter(Boolean)).values()];
   const isMulti = new Set((r.items||[]).map(i => i.customer_key||'').filter(Boolean)).size > 1;
   const splitBadge = isMulti ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
-  const custChips = custNames.length
-    ? custNames.map(n => `<span class="badge bg-secondary me-1" style="font-size:.6rem;font-weight:500">${escHtml(n)}</span>`).join('')
+  const custChips = custItems.length
+    ? custItems.map(({nm, type}) => {
+        const tc = type === 'tools' ? 'color:#93c5fd' : type === 'personal' ? 'color:#fda4af' : '';
+        return `<span class="badge bg-secondary me-1" style="font-size:.6rem;font-weight:500;${tc}">${escHtml(nm)}</span>`;
+      }).join('')
     : '—';
-  const rowStyle = r.pending_review        ? 'cursor:pointer;background:#fffde7'
-                 : r.id === _lastImportedId ? 'cursor:pointer;background:#dcfce7'
-                 : 'cursor:pointer';
-  return `<tr style="${rowStyle}" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}">
+  const rowStyle = r.pending_review ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
+  const rowClass = (!r.pending_review && r.id === _lastImportedId) ? 'rcpt-row-new' : '';
+  return `<tr class="${rowClass}" style="${rowStyle}" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}">
     <td class="fw-semibold small">${escHtml(r.vendor||'—')}</td>
-    <td class="text-muted small">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
+    <td class="text-muted small" style="padding-right:1rem">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
     <td class="text-primary fw-semibold small">$${(r.receipt_total||0).toFixed(2)}</td>
     <td>${custChips}${splitBadge}</td>
   </tr>`;
@@ -1607,9 +1672,9 @@ function renderRcptByDate(container, receipts, period) {
       </div>
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #fcd34d !important;border-top:none !important;">
         <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
-            <colgroup><col style="width:30%"><col style="width:80px"><col style="width:90px"><col></colgroup>
-            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
+          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
+            <colgroup><col style="width:180px"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <thead><tr><th>Vendor</th><th style="padding-right:1rem">Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${pendRows}</tbody>
           </table>
         </div>
@@ -1628,14 +1693,18 @@ function renderRcptByDate(container, receipts, period) {
       </div>
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #f9a8d4 !important;border-top:none !important;">
         <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
-            <colgroup><col style="width:30%"><col style="width:80px"><col style="width:90px"><col></colgroup>
-            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
+          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
+            <colgroup><col style="width:180px"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <thead><tr><th>Vendor</th><th style="padding-right:1rem">Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${unassRows}</tbody>
           </table>
         </div>
       </div>
     </div>`;
+  }
+
+  if ((pending.length || unassignedRcpts.length) && regular.length) {
+    html += `<hr style="border:none;border-top:2.5px solid #111;margin:1.25rem 0">`;
   }
 
   const byDate = {}, dateOrder = [];
@@ -1656,9 +1725,9 @@ function renderRcptByDate(container, receipts, period) {
       </div>
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
         <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
-            <colgroup><col style="width:30%"><col style="width:80px"><col style="width:90px"><col></colgroup>
-            <thead><tr><th>Vendor</th><th>Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
+          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
+            <colgroup><col style="width:180px"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <thead><tr><th>Vendor</th><th style="padding-right:1rem">Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -1693,7 +1762,7 @@ function renderRcptByJob(container, receipts, period) {
       if (ck) {
         if (!buckets[ck]) {
           const cust = S.custsByKey?.[ck];
-          buckets[ck] = { label: cust ? cust.property_label : (item.property_label||ck), items: [], total: 0 };
+          buckets[ck] = { label: cust ? cust.property_label : (item.property_label||ck), items: [], total: 0, custType: cust?.customer_type || '' };
         }
         buckets[ck].items.push(flat);
         buckets[ck].total += flat.amount;
@@ -1711,27 +1780,27 @@ function renderRcptByJob(container, receipts, period) {
   </div>`;
   const makeItemRow = item => {
     const splitBadge = item.is_split ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
-    const rowStyle = item.is_pending                  ? 'cursor:pointer;background:#fffde7'
-                   : item.receipt_id === _lastImportedId ? 'cursor:pointer;background:#dcfce7'
-                   : 'cursor:pointer';
-    return `<tr style="${rowStyle}" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}">
-      <td class="text-muted small" style="width:90px;white-space:nowrap">${escHtml(item.date||'')}</td>
-      <td class="text-muted small" style="width:110px">${escHtml(item.vendor||'')}</td>
-      <td class="small">${escHtml(item.description||'')}${splitBadge}</td>
-      <td class="text-primary fw-semibold small" style="width:75px;text-align:right">$${item.amount.toFixed(2)}</td>
+    const rowStyle = item.is_pending ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
+    const rowClass = (!item.is_pending && item.receipt_id === _lastImportedId) ? 'rcpt-row-new' : '';
+    return `<tr class="${rowClass}" style="${rowStyle}" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}">
+      <td class="text-muted small" style="width:90px;white-space:nowrap;padding-right:.8rem">${escHtml(item.date||'')}</td>
+      <td class="text-muted small" style="width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.vendor||'')}</td>
+      <td class="small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.description||'')}${splitBadge}</td>
+      <td class="text-primary fw-semibold small" style="width:75px;text-align:right;white-space:nowrap">$${item.amount.toFixed(2)}</td>
+      <td></td>
     </tr>`;
   };
-  const makeBlock = (label, bucket, headerStyle) => `
+  const makeBlock = (label, bucket, headerStyle, cardBorder = '#dee2e6') => `
     <div class="mb-3">
       <div class="hours-job-header" style="${headerStyle}">
         <span>${escHtml(label)}</span>
         <span class="text-muted fw-normal">$${bucket.total.toFixed(2)}</span>
       </div>
-      <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
+      <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid ${cardBorder} !important;border-top:none !important;">
         <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed">
-            <colgroup><col style="width:90px"><col style="width:110px"><col><col style="width:75px"></colgroup>
-            <thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+          <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
+            <colgroup><col style="width:90px"><col style="width:220px"><col style="width:400px"><col style="width:75px"><col></colgroup>
+            <thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th style="text-align:right">Amount</th><th></th></tr></thead>
             <tbody>${bucket.items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(makeItemRow).join('')}</tbody>
           </table>
         </div>
@@ -1745,8 +1814,27 @@ function renderRcptByJob(container, receipts, period) {
     html += `<div class="fw-semibold small mb-2" style="color:#be185d;border-top:2px solid #f9a8d4;padding-top:.6rem">&#9888; Unassigned Items</div>`;
     html += makeBlock('Unassigned', { items: unassigned, total: unassigned.reduce((s,i) => s+i.amount, 0) }, 'background:#fdf2f8;border-color:#f9a8d4');
   }
-  Object.values(buckets).sort((a,b) => a.label.localeCompare(b.label))
+  const allBuckets    = Object.values(buckets);
+  const regBuckets    = allBuckets.filter(b => b.custType !== 'tools' && b.custType !== 'personal');
+  const toolsBuckets  = allBuckets.filter(b => b.custType === 'tools');
+  const personalBkts  = allBuckets.filter(b => b.custType === 'personal');
+  if ((pendingItems.length || unassigned.length) && regBuckets.length + toolsBuckets.length + personalBkts.length > 0) {
+    html += `<hr style="border:none;border-top:2.5px solid #111;margin:1.25rem 0">`;
+  }
+  regBuckets.sort((a,b) => a.label.localeCompare(b.label))
     .forEach(b => { html += makeBlock(b.label, b, ''); });
+  if (toolsBuckets.length) {
+    const tItems = toolsBuckets.flatMap(b => b.items);
+    const tTotal = toolsBuckets.reduce((s, b) => s + b.total, 0);
+    html += `<div class="fw-semibold small mb-2" style="color:#1d4ed8;border-top:2px solid #93c5fd;padding-top:.6rem">Tools / Materials</div>`;
+    html += makeBlock('Tools / Materials', { items: tItems, total: tTotal }, 'background:#dbeafe;border-color:#93c5fd', '#93c5fd');
+  }
+  if (personalBkts.length) {
+    const pItems = personalBkts.flatMap(b => b.items);
+    const pTotal = personalBkts.reduce((s, b) => s + b.total, 0);
+    html += `<div class="fw-semibold small mb-2" style="color:#be185d;border-top:2px solid #f472b6;padding-top:.6rem">Personal</div>`;
+    html += makeBlock('Personal', { items: pItems, total: pTotal }, 'background:#fce7f3;border-color:#f472b6', '#f472b6');
+  }
   container.innerHTML = html;
   container.querySelectorAll('tr[data-id]').forEach(row =>
     row.addEventListener('click', () => loadReceiptForEdit(row.dataset.period, row.dataset.id)));
@@ -2074,7 +2162,8 @@ saveBtn.addEventListener('click', async () => {
       if (data.ok) {
         const moved = data.period && data.period !== S.editPeriod;
         showToast(moved ? `Receipt moved to ${formatPeriodLabel(data.period)}` : 'Receipt updated', 'success');
-        _pendingFlashId = S.editId;
+        _pendingFlashId   = S.editId;
+        _lastImportedId   = S.editId;  // green-highlight updated row after re-render
         setTimeout(showReceiptsTable, 1200);
       } else {
         showToast('Update failed', 'danger');
@@ -2083,7 +2172,8 @@ saveBtn.addEventListener('click', async () => {
       res  = await fetch('/save', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
       data = await res.json();
       if (data.ok) {
-        _lastImportedId = data.id;  // green-highlight this row after re-render
+        _lastImportedId      = data.id;  // green-highlight this row after re-render
+        lastActiveRcptPeriod = (data.file || '').replace('expenses_', '').replace('.json', '');
         showToast(`Saved to ${data.file}`, 'success');
         // Move inbox source to Reviewed folder after successful save
         if (S.inboxSource) {
@@ -2257,26 +2347,27 @@ async function loadHoursMainView() {
     const res  = await fetch('/hours');
     const data = await res.json();
     data.sort((a, b) => a.period.localeCompare(b.period)); // oldest → newest left-to-right
-    if (!data.length) {
+    const visible = data.filter(h => h.count > 0);
+    if (!visible.length) {
       monthTabs.innerHTML    = '';
       monthContent.innerHTML = '';
       emptyMsg.style.display = 'block';
       return;
     }
     emptyMsg.style.display = 'none';
-    const newestPeriod = data[data.length - 1].period;
-    const activePeriod = (lastActiveHoursPeriod && data.some(h => h.period === lastActiveHoursPeriod))
+    const newestPeriod = visible[visible.length - 1].period;
+    const activePeriod = (lastActiveHoursPeriod && visible.some(h => h.period === lastActiveHoursPeriod))
                          ? lastActiveHoursPeriod : newestPeriod;
-    monthTabs.innerHTML = data.map(h => `
+    monthTabs.innerHTML = visible.map(h => `
       <li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
                 data-bs-toggle="tab" data-bs-target="#hours-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
           ${formatPeriodLabel(h.period)}
-          <span class="badge bg-secondary ms-1" style="font-size:.65rem">${h.total_hours}h</span>
+          <span class="badge bg-primary ms-1" style="font-size:.65rem">${h.total_hours}h</span>
         </button>
       </li>`).join('');
-    monthContent.innerHTML = data.map(h => `
+    monthContent.innerHTML = visible.map(h => `
       <div class="tab-pane fade${h.period === activePeriod ? ' show active' : ''}" id="hours-month-${h.period}" role="tabpanel">
         <div id="hours-month-detail-${h.period}">
           <span class="text-muted small">Loading…</span>
@@ -2374,7 +2465,8 @@ function renderByJob(container, entries, period) {
     const mismatch = calc !== null && Math.abs(calc - (parseFloat(e.hours)||0)) > 0.05;
     const hrsClass = mismatch ? 'text-danger fw-bold' : 'text-primary fw-semibold';
     const hrsTip   = mismatch ? ` title="Punch times suggest ${calc.toFixed(2)}h"` : '';
-    return `<tr class="hours-entry-row" data-period="${escHtml(p||'')}" data-entry-id="${eid}" title="Click to edit" style="cursor:pointer">
+    const entryBg  = e.entry_id === _lastImportedHoursId ? 'background:#f0fdf4;' : '';
+    return `<tr class="hours-entry-row" data-period="${escHtml(p||'')}" data-entry-id="${eid}" title="Click to edit" style="${entryBg}cursor:pointer">
       <td class="text-muted small" style="width:110px;white-space:nowrap">${escHtml(e.date||'')}</td>
       <td class="text-muted small" style="width:120px">${fmtTimeCell(e.in_time, e.out_time)}</td>
       <td class="${hrsClass} small" style="width:65px;white-space:nowrap"${hrsTip}>${(parseFloat(e.hours)||0).toFixed(2)}h</td>
@@ -2622,7 +2714,8 @@ function renderByDay(container, entries, period) {
       const rateCells = hoursShowDollars
         ? `<td class="text-muted small" style="width:72px;white-space:nowrap">${rate != null ? `$${rate.toFixed(0)}/hr` : '—'}</td>
            <td class="fw-semibold small" style="width:72px;color:#059669;white-space:nowrap">${revenue != null ? `$${revenue.toFixed(2)}` : '—'}</td>` : '';
-      return `<tr class="hours-entry-row" data-period="${escHtml(period||'')}" data-entry-id="${eid}" title="Click to edit" style="cursor:pointer">
+      const entryBg = e.entry_id === _lastImportedHoursId ? 'background:#f0fdf4;' : '';
+      return `<tr class="hours-entry-row" data-period="${escHtml(period||'')}" data-entry-id="${eid}" title="Click to edit" style="${entryBg}cursor:pointer">
         <td class="fw-semibold small">${escHtml(custLabel)}${unassignBadge}</td>
         <td class="text-muted small" style="width:120px">${fmtTimeCell(e.in_time, e.out_time)}</td>
         <td class="${hrsClass} small" style="width:65px;white-space:nowrap"${hrsTip}>${(parseFloat(e.hours)||0).toFixed(2)}h</td>
@@ -2643,7 +2736,7 @@ function renderByDay(container, entries, period) {
           <div class="table-responsive">
             <table class="table table-sm table-hover hours-tbl align-middle mb-0" style="border-radius:0;table-layout:fixed">
               <colgroup>
-                <col><col style="width:120px"><col style="width:65px">${dollarCols}<col>
+                <col style="width:180px"><col style="width:120px"><col style="width:65px">${dollarCols}<col>
               </colgroup>
               <thead><tr>
                 <th>Job / Property</th><th>Time</th><th>Hours</th>${dollarColHeaders}<th>Memo</th>
@@ -3008,6 +3101,7 @@ document.getElementById('he-save-btn').addEventListener('click', async () => {
         };
         const usedPeriod = data.period || derivePeriod(payload.date);
         payload.entry_id = data.entry_id;
+        _lastImportedHoursId = data.entry_id;
         if (!hoursDataCache[usedPeriod]) hoursDataCache[usedPeriod] = [];
         hoursDataCache[usedPeriod].push(payload);
         if (usedPeriod !== period) {
@@ -3040,6 +3134,7 @@ document.getElementById('he-save-btn').addEventListener('click', async () => {
         const cached = hoursDataCache[period] || [];
         const idx    = cached.findIndex(e => e.entry_id === entryId);
         if (idx >= 0) Object.assign(cached[idx], payload);
+        _lastImportedHoursId = entryId;
         renderHoursMonthDetail(period, hoursDataCache[period] || []);
         updateTabBadge(period);
       }
@@ -3136,6 +3231,7 @@ const invEmptyMsg     = document.getElementById('inv-empty-msg');
 let   lastActiveInvPeriod  = null;
 const invSummaryByPeriod   = {};
 let   invFilter           = 'all';   // 'all' | 'draft' | 'sent' | 'overdue' | 'paid'
+let   invViewMode         = 'cards'; // 'cards' | 'table'
 const invHistoryCache     = {};       // period → full list including superseded
 
 const STATUS_BADGE = {
@@ -3170,31 +3266,33 @@ async function loadInvoicesMainView() {
     const res  = await fetch('/invoices');
     const data = await res.json();
     data.sort((a, b) => a.period.localeCompare(b.period));
-    if (!data.length) {
+    const visible = data.filter(h => h.count > 0);
+    if (!visible.length) {
       invMonthTabs.innerHTML    = '';
       invMonthContent.innerHTML = '';
       invEmptyMsg.style.display = 'block';
       return;
     }
     invEmptyMsg.style.display = 'none';
-    const newestPeriod = data[data.length - 1].period;
-    const activePeriod = (lastActiveInvPeriod && data.some(h => h.period === lastActiveInvPeriod))
+    const newestPeriod = visible[visible.length - 1].period;
+    const activePeriod = (lastActiveInvPeriod && visible.some(h => h.period === lastActiveInvPeriod))
                          ? lastActiveInvPeriod : newestPeriod;
-    invMonthTabs.innerHTML = data.map(h => {
-      const badge  = h.draft   ? `<span class="badge bg-secondary ms-1" style="font-size:.6rem">${h.draft}d</span>`    : '';
-      const sbadge = h.sent    ? `<span class="badge bg-primary ms-1"   style="font-size:.6rem">${h.sent}s</span>`     : '';
-      const pbadge = h.paid    ? `<span class="badge bg-success ms-1"   style="font-size:.6rem">${h.paid}p</span>`     : '';
-      const obadge = h.overdue ? `<span class="badge bg-danger ms-1"    style="font-size:.6rem">${h.overdue}!</span>`  : '';
+    invMonthTabs.innerHTML = visible.map(h => {
+      const staleBadge = h.stale   ? `<span class="badge ms-1" style="background:#f97316;color:#fff;font-size:.6rem">&#9888; ${h.stale}</span>` : '';
+      const badge      = h.draft   ? `<span class="badge bg-secondary ms-1" style="font-size:.6rem">${h.draft}d</span>`    : '';
+      const sbadge     = h.sent    ? `<span class="badge bg-primary ms-1"   style="font-size:.6rem">${h.sent}s</span>`     : '';
+      const pbadge     = h.paid    ? `<span class="badge bg-success ms-1"   style="font-size:.6rem">${h.paid}p</span>`     : '';
+      const obadge     = h.overdue ? `<span class="badge bg-danger ms-1"    style="font-size:.6rem">${h.overdue}!</span>`  : '';
       invSummaryByPeriod[h.period] = h;
       return `<li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
                 data-bs-toggle="tab" data-bs-target="#inv-month-${h.period}"
                 type="button" role="tab" data-period="${h.period}">
-          ${formatPeriodLabel(h.period)}${badge}${sbadge}${pbadge}${obadge}
+          ${formatPeriodLabel(h.period)}${staleBadge}${badge}${sbadge}${pbadge}${obadge}
         </button>
       </li>`;
     }).join('');
-    invMonthContent.innerHTML = data.map(h => `
+    invMonthContent.innerHTML = visible.map(h => `
       <div class="tab-pane fade${h.period === activePeriod ? ' show active' : ''}"
            id="inv-month-${h.period}" role="tabpanel">
         <div id="inv-detail-${h.period}"><span class="text-muted small">Loading…</span></div>
@@ -3243,8 +3341,8 @@ function renderInvList(container, period, invs) {
   let badgesHtml = '';
   if (sm.labor_total)     badgesHtml += `<span class="badge bg-success px-3 py-2" style="font-size:.72rem">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
   if (sm.tools_total)     badgesHtml += `<span class="badge bg-primary px-3 py-2" style="font-size:.72rem">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
-  if (sm.materials_total) badgesHtml += `<span class="badge px-3 py-2" style="background:#f97316;font-size:.72rem">$${sm.materials_total.toFixed(2)} Customer Materials</span>`;
-  if (sm.personal_total)  badgesHtml += `<span class="badge px-3 py-2" style="background:#fce7f3;color:#be185d;font-size:.72rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
+  if (sm.materials_total) badgesHtml += `<span class="badge px-3 py-2" style="background:#7c4d1a;font-size:.72rem">$${sm.materials_total.toFixed(2)} Customer Materials</span>`;
+  if (sm.personal_total)  badgesHtml += `<span class="badge px-3 py-2" style="background:#f472b6;color:#fff;font-size:.72rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
 
   // Filter
   const filtered = invs.filter(inv => {
@@ -3288,6 +3386,67 @@ function renderInvList(container, period, invs) {
   }
 
   const sorted = [...filtered].sort((a, b) => a.bill_to_name.localeCompare(b.bill_to_name));
+
+  if (invViewMode === 'table') {
+    const STATUS_SORT_IDX = { draft: 0, sent: 1, paid: 2 };
+    const tableSorted = [...filtered].sort((a, b) => {
+      const sa = STATUS_SORT_IDX[a.status || 'draft'] ?? 0;
+      const sb = STATUS_SORT_IDX[b.status || 'draft'] ?? 0;
+      return sa !== sb ? sa - sb : a.bill_to_name.localeCompare(b.bill_to_name);
+    });
+    const rows = tableSorted.map(inv => {
+      const statusKey = inv.status || 'draft';
+      const overdue   = invIsOverdue(inv);
+      const rowBg     = overdue ? 'background:#fff5f5' : inv.stale ? 'background:#fff8f0' : '';
+      const statusBtns = STATUS_ORDER.map((s, i) => {
+        const curIdx = STATUS_ORDER.indexOf(statusKey);
+        const isCur  = s === statusKey;
+        const isPast = i < curIdx;
+        const label  = s.charAt(0).toUpperCase() + s.slice(1);
+        let cls;
+        if (isPast || isCur) cls = s === 'draft' ? 'btn-secondary' : s === 'sent' ? 'btn-primary' : 'btn-success';
+        else                 cls = s === 'draft' ? 'btn-inv-future-secondary' : s === 'sent' ? 'btn-inv-future-primary' : 'btn-inv-future-success';
+        const dis = isCur ? ' style="pointer-events:none"' : '';
+        return `<button class="btn btn-xs ${cls}"${dis} style="font-size:.65rem;padding:.1rem .35rem"
+          onclick="setInvStatus('${escHtml(period)}','${escHtml(inv.invoice_id)}','${s}','${escHtml(statusKey)}')">${label}</button>`;
+      }).join('');
+      const flagCell = [
+        overdue ? '<span class="badge bg-danger" style="font-size:.58rem">Overdue</span>' : '',
+        inv.stale ? '<span class="badge ms-1" style="background:#f97316;color:#fff;font-size:.58rem">&#9888; Changed</span>' : '',
+        inv.corrects ? '<span class="badge bg-secondary ms-1" style="font-size:.58rem">Corrected</span>' : '',
+      ].filter(Boolean).join('');
+      return `<tr style="${rowBg}">
+        <td class="small fw-semibold" style="white-space:nowrap">${escHtml(inv.invoice_id)}</td>
+        <td class="small fw-semibold">${escHtml(inv.bill_to_name)}</td>
+        <td class="small text-muted">${escHtml(inv.property_label || '')}</td>
+        <td class="small fw-bold text-success" style="white-space:nowrap">$${inv.total.toFixed(2)}</td>
+        <td><div class="btn-group btn-group-sm">${statusBtns}</div></td>
+        <td class="small text-muted" style="white-space:nowrap">${inv.sent_at ? fmtInvDate(inv.sent_at) : '—'}</td>
+        <td class="small text-muted" style="white-space:nowrap">${inv.due_date && statusKey !== 'draft' ? fmtInvDate(inv.due_date) : '—'}</td>
+        <td class="small text-muted" style="white-space:nowrap">${inv.paid_at ? fmtInvDate(inv.paid_at) : '—'}</td>
+        <td>${flagCell}</td>
+      </tr>`;
+    }).join('');
+    container.innerHTML = headerHtml + `
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+          <thead><tr>
+            <th style="white-space:nowrap">Invoice #</th>
+            <th>Customer</th>
+            <th>Property</th>
+            <th>Amount</th>
+            <th style="min-width:180px">Status</th>
+            <th>Sent Date</th>
+            <th>Due Date</th>
+            <th>Paid</th>
+            <th>Flags</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    return;
+  }
+
   let html = headerHtml + `<div class="row g-3">`;
 
   sorted.forEach(inv => {
@@ -3361,17 +3520,17 @@ function renderInvList(container, period, invs) {
           </div>
           <div id="${historyId}" style="display:none"></div>
         </div>
-        <div class="card-footer bg-transparent pt-2 pb-2">
+        <div class="card-footer bg-transparent py-1 inv-card-footer">
           <div class="d-flex gap-1 justify-content-between align-items-center flex-wrap">
             <div class="btn-group btn-group-sm inv-status-group">${statusBtns}</div>
             <div class="d-flex gap-1">
               <a href="/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print" target="_blank"
-                 class="btn btn-sm btn-dark">Preview &#128438;</a>
+                 class="btn btn-sm btn-dark">&#128438; Preview</a>
               ${emailAddr
                 ? `<button class="btn btn-sm btn-primary"
                      onclick="openEmailModal('${escHtml(period)}','${escHtml(inv.invoice_id)}','${escHtml(emailAddr)}','${escHtml(inv.bill_to_name)}')"
-                     title="Email invoice to ${escHtml(emailAddr)}">Email &#9993;</button>`
-                : `<button class="btn btn-sm btn-primary" disabled title="No email on file">Email &#9993;</button>`}
+                     title="Email invoice to ${escHtml(emailAddr)}">&#9993; Email</button>`
+                : `<button class="btn btn-sm btn-primary" disabled title="No email on file">&#9993; Email</button>`}
               ${regenBtn}
               ${deleteBtn}
             </div>
@@ -3544,7 +3703,82 @@ document.getElementById('inv-gen-confirm-btn').addEventListener('click', async (
   } catch(e) {
     showToast('Error: ' + e, 'danger');
   } finally {
-    btn.disabled = false; btn.innerHTML = 'Generate Invoices &#9889;';
+    btn.disabled = false; btn.innerHTML = '&#9889; Generate All Invoices &#9889;';
+  }
+});
+
+// ── Solo invoice button ───────────────────────────────────────────────────────
+document.getElementById('inv-solo-btn').addEventListener('click', async () => {
+  const activeTab = invMonthTabs.querySelector('.nav-link.active');
+  const period = activeTab?.dataset.period;
+  if (!period) { showToast('Open an invoice month tab first', 'warning'); return; }
+
+  const select     = document.getElementById('inv-solo-customer-select');
+  const periodLbl  = document.getElementById('inv-solo-period-label');
+  periodLbl.textContent = formatPeriodLabel(period);
+  select.innerHTML = '<option value="">Loading…</option>';
+  new bootstrap.Modal(document.getElementById('invSoloModal')).show();
+
+  try {
+    const [hoursRes, invoicesRes] = await Promise.all([
+      fetch(`/hours/${period}`),
+      fetch(`/invoices/${period}`),
+    ]);
+    const hoursData    = hoursRes.ok    ? await hoursRes.json()    : {};
+    const invoicesData = invoicesRes.ok ? await invoicesRes.json() : [];
+
+    const hoursCks   = new Set((hoursData.entries || []).map(e => e.customer_key).filter(Boolean));
+    const rcpts      = rcptDataCache[period] || [];
+    const expenseCks = new Set(rcpts.flatMap(r => (r.items||[]).map(i => i.customer_key).filter(Boolean)));
+    const invoicedCks = new Set(invoicesData.map(i => i.customer_key));
+    const nonBillable = new Set(['personal', 'tools']);
+
+    const eligible = (S.customers || []).filter(c =>
+      !nonBillable.has(c.type) &&
+      (hoursCks.has(c.key) || expenseCks.has(c.key)) &&
+      !invoicedCks.has(c.key)
+    );
+
+    select.innerHTML = eligible.length
+      ? eligible.map(c => {
+          const full = S.custsByKey?.[c.key];
+          const name = (full?.bill_to_name && full.bill_to_name !== full.property_label)
+            ? `${full.bill_to_name} – ${c.label || c.key}`
+            : (c.label || c.key);
+          return `<option value="${escHtml(c.key)}">${escHtml(name)}</option>`;
+        }).join('')
+      : '<option value="">— All customers already have invoices —</option>';
+  } catch(e) {
+    select.innerHTML = '<option value="">Error loading customers</option>';
+  }
+});
+
+document.getElementById('inv-solo-confirm-btn').addEventListener('click', async () => {
+  const activeTab   = invMonthTabs.querySelector('.nav-link.active');
+  const period      = activeTab?.dataset.period;
+  const customerKey = document.getElementById('inv-solo-customer-select').value;
+  if (!customerKey) { showToast('Select a customer first', 'warning'); return; }
+
+  bootstrap.Modal.getInstance(document.getElementById('invSoloModal')).hide();
+  const btn = document.getElementById('inv-solo-btn');
+  btn.disabled = true;
+  try {
+    const res  = await fetch(`/invoices/${period}/generate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ net_days: invNetDays, customer_key: customerKey }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const custLabel = (S.customers||[]).find(c => c.key === customerKey)?.property_label || customerKey;
+      showToast(`Invoice generated for ${escHtml(custLabel)}`, 'success');
+      await loadInvoicesMainView();
+    } else {
+      showToast(data.error || 'Generation failed', 'danger');
+    }
+  } catch(e) {
+    showToast('Error: ' + e, 'danger');
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -3695,6 +3929,144 @@ document.getElementById('inv-filter-group').addEventListener('click', e => {
 });
 
 document.getElementById('tab-invoices-btn').addEventListener('show.bs.tab', loadInvoicesMainView);
+
+document.getElementById('inv-view-toggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-invview]');
+  if (!btn) return;
+  invViewMode = btn.dataset.invview;
+  document.querySelectorAll('#inv-view-toggle button').forEach(b => {
+    b.className = b === btn ? 'btn btn-dark' : 'btn btn-outline-secondary';
+  });
+  const activePane = invMonthContent.querySelector('.tab-pane.active');
+  if (activePane) loadInvPeriod(activePane.id.replace('inv-month-', ''));
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 6. FINANCIALS
+// ═══════════════════════════════════════════════════════════════
+
+const MONTH_NAMES_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function renderFinYear(yr, months) {
+  const sortedMonths = Object.keys(months).sort();
+  let totJobs = 0, totHours = 0, totLabor = 0, totMaterials = 0, totTools = 0, totPersonal = 0;
+  let totDraft = 0, totSent = 0, totPaid = 0;
+
+  const rows = sortedMonths.map(m => {
+    const { inv, hrs } = months[m];
+    const jobs      = inv?.count || 0;
+    const hours     = parseFloat(hrs?.total_hours || 0);
+    const labor     = parseFloat(inv?.labor_total || 0);
+    const materials = parseFloat(inv?.materials_total || 0);
+    const tools     = parseFloat(inv?.tools_total || 0);
+    const personal  = parseFloat(inv?.personal_total || 0);
+    const gross     = labor + materials;
+    const draft     = inv?.draft || 0;
+    const sent      = inv?.sent  || 0;
+    const paid      = inv?.paid  || 0;
+    totJobs      += jobs;      totHours     += hours;
+    totLabor     += labor;     totMaterials += materials;
+    totTools     += tools;     totPersonal  += personal;
+    totDraft     += draft;     totSent      += sent;      totPaid += paid;
+    const invBadges = (draft + sent + paid) > 0
+      ? `<span class="badge bg-secondary me-1" style="font-size:.6rem">${draft}d</span><span class="badge bg-primary me-1" style="font-size:.6rem">${sent}s</span><span class="badge bg-success" style="font-size:.6rem">${paid}p</span>`
+      : '<span class="text-muted">—</span>';
+    const fmtC = v => v > 0 ? '$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '<span class="text-muted">—</span>';
+    return `<tr>
+      <td class="fw-semibold">${MONTH_NAMES_SHORT[parseInt(m,10)-1]}</td>
+      <td class="text-center">${jobs > 0 ? jobs : '<span class="text-muted">—</span>'}</td>
+      <td>${hours > 0 ? hours.toFixed(1)+'h' : '<span class="text-muted">—</span>'}</td>
+      <td class="text-success fw-semibold">${fmtC(labor)}</td>
+      <td style="color:#7c4d1a">${fmtC(materials)}</td>
+      <td style="color:#1d4ed8">${fmtC(tools)}</td>
+      <td style="color:#be185d">${fmtC(personal)}</td>
+      <td class="fw-bold" style="color:#7851a9">${gross > 0 ? '$'+gross.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '<span class="text-muted">—</span>'}</td>
+      <td>${invBadges}</td>
+    </tr>`;
+  }).join('');
+
+  const totGross = totLabor + totMaterials;
+  return `
+    <table class="table table-sm table-hover align-middle mt-3 mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Month</th>
+          <th class="text-center">Distinct Jobs</th>
+          <th>Total Hours</th>
+          <th class="text-success">Labor Revenue</th>
+          <th style="color:#7c4d1a">Customer Materials</th>
+          <th style="color:#1d4ed8">Tools / Materials</th>
+          <th style="color:#be185d">Personal</th>
+          <th style="color:#7851a9">Gross Revenue</th>
+          <th>Invoice Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr class="fw-bold" style="border-top:2px solid #dee2e6">
+          <td>${yr} Total</td>
+          <td class="text-center">${totJobs > 0 ? totJobs : '—'}</td>
+          <td>${totHours > 0 ? totHours.toFixed(1)+'h' : '—'}</td>
+          <td class="text-success">$${totLabor.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+          <td style="color:#7c4d1a">$${totMaterials.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+          <td style="color:#1d4ed8">$${totTools.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+          <td style="color:#be185d">$${totPersonal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+          <td style="color:#7851a9">$${totGross.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+          <td>
+            <span class="badge bg-secondary me-1" style="font-size:.6rem">${totDraft}d</span>
+            <span class="badge bg-primary me-1" style="font-size:.6rem">${totSent}s</span>
+            <span class="badge bg-success" style="font-size:.6rem">${totPaid}p</span>
+          </td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+async function loadFinancialsView() {
+  const tabs       = document.getElementById('fin-year-tabs');
+  const tabContent = document.getElementById('fin-year-content');
+  const emptyMsg   = document.getElementById('fin-empty-msg');
+  tabs.innerHTML = tabContent.innerHTML = '';
+
+  try {
+    const [invRes, hoursRes] = await Promise.all([fetch('/invoices'), fetch('/hours')]);
+    const invData   = await invRes.json();
+    const hoursData = await hoursRes.json();
+
+    const hoursByPeriod = {};
+    hoursData.forEach(h => { hoursByPeriod[h.period] = h; });
+
+    const years = {};
+    const addPeriod = (period, inv, hrs) => {
+      const [y, m] = period.split('_');
+      if (!years[y]) years[y] = {};
+      if (!years[y][m]) years[y][m] = { inv: null, hrs: null };
+      if (inv) years[y][m].inv = inv;
+      if (hrs) years[y][m].hrs = hrs;
+    };
+    invData.forEach(p   => addPeriod(p.period, p, hoursByPeriod[p.period] || null));
+    hoursData.forEach(h => addPeriod(h.period, years[h.period.split('_')[0]]?.[h.period.split('_')[1]]?.inv || null, h));
+
+    const yearKeys = Object.keys(years).sort().reverse();
+    if (!yearKeys.length) { emptyMsg.style.display = 'block'; return; }
+    emptyMsg.style.display = 'none';
+
+    tabs.innerHTML = yearKeys.map((yr, i) => `
+      <li class="nav-item" role="presentation">
+        <button class="nav-link${i===0?' active':''}" data-bs-toggle="tab"
+                data-bs-target="#fin-year-${yr}" type="button">${yr}</button>
+      </li>`).join('');
+
+    tabContent.innerHTML = yearKeys.map((yr, i) => `
+      <div class="tab-pane fade${i===0?' show active':''}" id="fin-year-${yr}" role="tabpanel">
+        ${renderFinYear(yr, years[yr])}
+      </div>`).join('');
+  } catch(e) {
+    tabContent.innerHTML = '<p class="text-muted small p-3">Could not load financial data.</p>';
+  }
+}
+
+document.getElementById('tab-financials-btn').addEventListener('show.bs.tab', loadFinancialsView);
 
 // ═══════════════════════════════════════════════════════════════
 // 7. TASKS
@@ -4053,6 +4425,7 @@ loadAllCustomers().then(() => {
   loadReceiptsMainView();
   loadHoursMainView();
 });
+
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
