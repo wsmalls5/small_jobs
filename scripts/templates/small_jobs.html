@@ -9,7 +9,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Small Jobs">
+<meta name="app-email-from" content="{{ email_from }}">
 <link href="/static/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
 <style>
   body { background:#f5f6fa; font-size:.93rem; }
   .navbar-brand { font-weight:700; letter-spacing:-.3px; }
@@ -720,10 +722,45 @@
           </div>
         </div>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer" style="position:relative">
         <button type="button" class="btn btn-outline-danger me-auto" id="cust-del-btn" style="display:none">Delete</button>
+        <button type="button" class="btn btn-outline-success" id="cust-msg-btn" style="display:none;position:absolute;left:50%;transform:translateX(-50%)">&#9993; Send a Message</button>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="cust-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Message compose modal -->
+<div class="modal fade" id="msgComposeModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">&#9993; Send a Message</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label fw-semibold small text-muted mb-1">From</label>
+          <input type="text" class="form-control form-control-sm bg-light" id="msg-from" readonly>
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold small text-muted mb-1">To</label>
+          <input type="email" class="form-control form-control-sm" id="msg-to">
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold small text-muted mb-1">Subject</label>
+          <input type="text" class="form-control form-control-sm" id="msg-subject">
+        </div>
+        <div class="mb-1">
+          <label class="form-label fw-semibold small text-muted mb-1">Message</label>
+          <div id="msg-editor" style="height:240px;border:1px solid #dee2e6;border-radius:0 0 .375rem .375rem;background:#fff"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-success" id="msg-send-btn">&#9993; Send</button>
       </div>
     </div>
   </div>
@@ -937,6 +974,7 @@
 </div>
 
 <script src="/static/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════
 // 1. STATE
@@ -1227,6 +1265,7 @@ document.getElementById('tab-customers').addEventListener('click', async e => {
   aliasList.innerHTML = '';
   (c.aliases || []).forEach(a => addAliasRow(a));
   document.getElementById('cust-del-btn').style.display = '';
+  document.getElementById('cust-msg-btn').style.display = c.email ? '' : 'none';
   custModal.show();
 });
 
@@ -1258,6 +1297,7 @@ addCustBtn.addEventListener('click', () => {
   document.getElementById('cm-type').value         = 'individual';
   aliasList.innerHTML = '';
   document.getElementById('cust-del-btn').style.display = 'none';
+  document.getElementById('cust-msg-btn').style.display = 'none';
   custModal.show();
 });
 
@@ -3558,7 +3598,10 @@ async function setInvStatus(period, invoiceId, newStatus, currentStatus) {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast(`Invoice moved to ${newStatus}`, 'success');
+      const toastMsg = newStatus === 'sent'
+        ? `Invoice marked sent — copy saved to Dropbox`
+        : `Invoice moved to ${newStatus}`;
+      showToast(toastMsg, 'success');
       await loadInvPeriod(period);
       await loadInvoicesMainView();
     } else {
@@ -3839,6 +3882,7 @@ invMonthContent.addEventListener('click', async e => {
     aliasList.innerHTML = '';
     (c.aliases || []).forEach(a => addAliasRow(a));
     document.getElementById('cust-del-btn').style.display = '';
+    document.getElementById('cust-msg-btn').style.display = c.email ? '' : 'none';
     custModal.show();
     return;
   }
@@ -4432,6 +4476,63 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
+
+// ═══════════════════════════════════════════════════════════════
+// MESSAGE COMPOSE
+// ═══════════════════════════════════════════════════════════════
+
+let _msgQuill = null;
+
+document.getElementById('msgComposeModal').addEventListener('shown.bs.modal', () => {
+  if (!_msgQuill) {
+    _msgQuill = new Quill('#msg-editor', {
+      theme: 'snow',
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['link'],
+          ['clean']
+        ]
+      }
+    });
+  }
+});
+
+document.getElementById('cust-msg-btn').addEventListener('click', () => {
+  const email = document.getElementById('cm-email').value.trim();
+  if (!email) return;
+  bootstrap.Modal.getInstance(document.getElementById('custModal'))?.hide();
+  document.getElementById('msg-from').value    = document.querySelector('meta[name="app-email-from"]')?.content || '';
+  document.getElementById('msg-to').value      = email;
+  document.getElementById('msg-subject').value = '';
+  if (_msgQuill) _msgQuill.setContents([]);
+  new bootstrap.Modal(document.getElementById('msgComposeModal')).show();
+});
+
+document.getElementById('msg-send-btn').addEventListener('click', async () => {
+  const to      = document.getElementById('msg-to').value.trim();
+  const subject = document.getElementById('msg-subject').value.trim();
+  const html    = _msgQuill ? _msgQuill.root.innerHTML : '';
+  if (!to || !subject) { showToast('To and Subject are required', 'danger'); return; }
+  const btn = document.getElementById('msg-send-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res  = await fetch('/send_message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject, html })
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) { showToast(data.error || 'Send failed', 'danger'); return; }
+    bootstrap.Modal.getInstance(document.getElementById('msgComposeModal'))?.hide();
+    showToast('Message sent!', 'success');
+  } catch(e) {
+    showToast('Network error', 'danger');
+  } finally {
+    btn.disabled = false; btn.innerHTML = '&#9993; Send';
+  }
+});
 </script>
 </body>
 </html>

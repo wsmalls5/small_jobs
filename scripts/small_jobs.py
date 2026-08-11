@@ -5,7 +5,7 @@ Run:  python scripts/receipt_app.py
 Open: http://localhost:5001
 """
 
-import json, os, re, uuid, datetime, calendar, smtplib, ssl, difflib
+import json, os, re, uuid, datetime, calendar, smtplib, ssl, difflib, threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text      import MIMEText
 from pathlib import Path
@@ -45,6 +45,11 @@ if REVIEWED:
     REVIEWED.mkdir(parents=True, exist_ok=True)
 if CANCELED:
     CANCELED.mkdir(parents=True, exist_ok=True)
+
+_dropbox_inv_env = os.environ.get("DROPBOX_INVOICES", "")
+DROPBOX_INVOICES = Path(_dropbox_inv_env) if _dropbox_inv_env else None
+if DROPBOX_INVOICES:
+    DROPBOX_INVOICES.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__, template_folder=str(TEMPLATES))
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
@@ -451,7 +456,7 @@ def parse_hours_csv(content_bytes):
 
 @app.route("/")
 def index():
-    return render_template("small_jobs.html")
+    return render_template("small_jobs.html", email_from=EMAIL_FROM)
 
 @app.route("/sw.js")
 def service_worker():
@@ -1176,15 +1181,15 @@ def _save_invoice_meta(meta):
     tmp.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(str(tmp), str(INVOICES / "meta.json"))
 
-def _next_invoice_id(year):
+def _next_invoice_id(year, month):
     meta = _invoice_meta()
-    if meta.get("last_year") != year:
-        # New year — reset counter so first invoice is YYYY_001
-        meta["last_invoice_number"] = 0
-        meta["last_year"] = year
-    meta["last_invoice_number"] += 1
+    key = f"{year}_{month:02d}"
+    counters = meta.setdefault("monthly_counters", {})
+    if key not in counters:
+        counters[key] = 120   # first invoice in the month increments to 121
+    counters[key] += 1
     _save_invoice_meta(meta)
-    return f"{year}_{meta['last_invoice_number']:03d}"
+    return f"{year}{month:02d}{counters[key]:03d}"
 
 def _load_invoices(period):
     fp = INVOICES / f"invoices_{period}.json"
@@ -1197,6 +1202,86 @@ def _save_invoices(period, invoices):
     tmp = fp.with_suffix(".tmp")
     tmp.write_text(json.dumps(invoices, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(str(tmp), str(fp))
+
+
+_BROWSER_PATHS = [
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",  # prefer Edge — unaffected by running Chrome
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+]
+_BROWSER_PROFILE = Path(os.environ.get("TEMP", "C:/Temp")) / "small-jobs-headless-profile"
+
+def _find_browser():
+    for p in _BROWSER_PATHS:
+        if Path(p).exists():
+            return p
+    return None
+
+def _try_save_invoice_pdf(invoice_id, inv, period):
+    """Render invoice to PDF using headless Edge/Chrome — identical to browser print view."""
+    if not DROPBOX_INVOICES:
+        app.logger.warning("PDF save skipped: DROPBOX_INVOICES not configured (restart server after .env change)")
+        return
+    if not DROPBOX_INVOICES.exists():
+        app.logger.warning(f"PDF save skipped: folder does not exist: {DROPBOX_INVOICES}")
+        return
+    browser = _find_browser()
+    if not browser:
+        app.logger.warning("PDF save skipped: no Chrome or Edge found")
+        return
+    try:
+        import tempfile, subprocess
+        inv_data = dict(inv)
+        if not inv_data.get("month_label"):
+            try:
+                y, m = int(period.split("_")[0]), int(period.split("_")[1])
+                inv_data["month_label"] = datetime.datetime(y, m, 1).strftime("%B %Y")
+            except Exception:
+                inv_data["month_label"] = period
+        if not inv_data.get("property_label"):
+            try:
+                db = _load_customers()
+                cust = db.get(inv_data.get("customer_key", ""), {})
+                inv_data["property_label"] = cust.get("property_label", "")
+            except Exception:
+                pass
+        html = render_template("invoice_print.html", inv=inv_data)
+        with tempfile.NamedTemporaryFile(suffix=".html", delete=False,
+                                         mode="w", encoding="utf-8") as f:
+            f.write(html)
+            tmp_path = f.name
+        dest = str(DROPBOX_INVOICES / f"{invoice_id}.pdf")
+        file_url = Path(tmp_path).as_uri()
+        result = subprocess.run([
+            browser,
+            "--headless=new",
+            "--disable-gpu",
+            "--no-sandbox",
+            "--no-pdf-header-footer",
+            "--run-all-compositor-stages-before-draw",
+            f"--user-data-dir={_BROWSER_PROFILE}",
+            f"--print-to-pdf={dest}",
+            file_url,
+        ], capture_output=True, timeout=30)
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        if result.returncode == 0 and Path(dest).exists():
+            app.logger.info(f"PDF saved: {dest}")
+        else:
+            app.logger.error(f"Browser PDF export failed (rc={result.returncode}): {result.stderr.decode(errors='replace')}")
+    except Exception as e:
+        app.logger.error(f"PDF save failed for {invoice_id}: {e}", exc_info=True)
+
+
+def _save_invoice_pdf_async(invoice_id, inv, period):
+    """Fire PDF generation in a background thread so the HTTP response returns immediately."""
+    ctx = app.app_context()
+    def _run():
+        with ctx:
+            _save_invoice_pdf_async(invoice_id, inv, period)
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def _mark_invoices_stale(period, customer_keys):
@@ -1462,7 +1547,7 @@ def generate_invoices(period):
             else:
                 # Sent/paid — supersede and create corrected draft
                 old["superseded"] = True
-                corrected_id = _next_invoice_id(year)
+                corrected_id = _next_invoice_id(year, month)
                 new_inv = _build_invoice(corrected_id, ck, cust, period, invoice_date,
                                          month_name, labor_entries, material_entries,
                                          labor_subtotal, materials_subtotal, invoice_subtotal,
@@ -1471,7 +1556,7 @@ def generate_invoices(period):
                 existing.append(new_inv)
                 generated.append(corrected_id)
         else:
-            inv_id  = _next_invoice_id(year)
+            inv_id  = _next_invoice_id(year, month)
             new_inv = _build_invoice(inv_id, ck, cust, period, invoice_date, month_name,
                                      labor_entries, material_entries, labor_subtotal,
                                      materials_subtotal, invoice_subtotal, now,
@@ -1556,6 +1641,8 @@ def update_invoice_status(period, invoice_id):
         if not inv.get("paid_at"):
             inv["paid_at"] = now
     _save_invoices(period, invs)
+    if new_status == "sent":
+        _save_invoice_pdf_async(invoice_id, inv, period)
     return jsonify({"ok": True, "invoice": inv})
 
 
@@ -1628,7 +1715,41 @@ def email_invoice(period, invoice_id):
         inv["sent_at"] = now
     inv["last_emailed_at"] = now
     _save_invoices(period, invs)
+
+    _try_save_invoice_pdf(invoice_id, inv, period)
     return jsonify({"ok": True, "sent_to": recipient, "invoice": inv})
+
+
+@app.route("/send_message", methods=["POST"])
+def send_message():
+    if not SMTP_USER or not SMTP_PASS:
+        return jsonify({"error": "Email not configured."}), 503
+    body    = request.get_json() or {}
+    to      = body.get("to", "").strip()
+    subject = body.get("subject", "").strip()
+    html    = body.get("html", "").strip() or "(no message body)"
+    if not to or not subject:
+        return jsonify({"error": "Recipient and subject are required."}), 400
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = EMAIL_FROM
+    msg["To"]      = to
+    msg.attach(MIMEText(html, "html", "utf-8"))
+    try:
+        ctx = ssl.create_default_context()
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as server:
+                server.login(SMTP_USER, SMTP_PASS)
+                server.sendmail(EMAIL_FROM, to, msg.as_string())
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                server.ehlo()
+                server.starttls(context=ctx)
+                server.login(SMTP_USER, SMTP_PASS)
+                server.sendmail(EMAIL_FROM, to, msg.as_string())
+    except Exception as e:
+        return jsonify({"error": f"SMTP error: {str(e)}"}), 500
+    return jsonify({"ok": True})
 
 
 @app.route("/invoices/<period>/<invoice_id>", methods=["DELETE"])

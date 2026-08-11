@@ -231,6 +231,9 @@ function doPrint() {
       {% if inv.property_label %}
       <div><strong>Property:</strong> {{ inv.property_label }}</div>
       {% endif %}
+      {% if inv.bill_to_email %}
+      <div><strong>Attn:</strong> {{ inv.bill_to_email }}</div>
+      {% endif %}
       <div class="cust-meta">
         <table>
           <tr><td>Invoice No.</td><td>{{ inv.invoice_id }}</td></tr>
