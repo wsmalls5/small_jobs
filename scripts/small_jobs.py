@@ -1280,7 +1280,7 @@ def _save_invoice_pdf_async(invoice_id, inv, period):
     ctx = app.app_context()
     def _run():
         with ctx:
-            _save_invoice_pdf_async(invoice_id, inv, period)
+            _try_save_invoice_pdf(invoice_id, inv, period)
     threading.Thread(target=_run, daemon=True).start()
 
 
@@ -1716,7 +1716,7 @@ def email_invoice(period, invoice_id):
     inv["last_emailed_at"] = now
     _save_invoices(period, invs)
 
-    _try_save_invoice_pdf(invoice_id, inv, period)
+    _save_invoice_pdf_async(invoice_id, inv, period)
     return jsonify({"ok": True, "sent_to": recipient, "invoice": inv})
 
 
