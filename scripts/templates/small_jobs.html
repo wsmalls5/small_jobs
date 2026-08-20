@@ -595,6 +595,19 @@
       <div id="fin-empty-msg" class="text-center text-muted py-5" style="display:none">
         <p class="mt-2">No financial data yet.</p>
       </div>
+      <!-- Spend by Vendor -->
+      <hr style="border-color:#dee2e6;margin-top:1.5rem;margin-bottom:0">
+      <div id="fin-vendor-section" class="mt-3" style="display:none">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h6 class="fw-semibold text-muted text-uppercase mb-0" style="letter-spacing:.5px;font-size:.75rem">Spend by Vendor</h6>
+          <div class="btn-group btn-group-sm" id="vendor-cat-toggle">
+            <button class="btn btn-dark btn-sm" data-cat="all">All</button>
+            <button class="btn btn-outline-secondary btn-sm" data-cat="customer">Customer</button>
+            <button class="btn btn-outline-secondary btn-sm" data-cat="personal">Personal</button>
+          </div>
+        </div>
+        <div class="table-responsive" id="fin-vendor-content"></div>
+      </div>
     </div>
   </div>
 
@@ -733,6 +746,11 @@
 </div>
 
 <!-- Message compose modal -->
+<!-- Stale diff popup -->
+<div id="stale-diff-popup" style="position:fixed;z-index:9999;background:#fff;border:1.5px solid #f97316;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.18);padding:12px 16px;max-width:480px;min-width:280px;font-size:.82rem;display:none;pointer-events:none">
+  <div id="stale-diff-content"></div>
+</div>
+
 <div class="modal fade" id="msgComposeModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -1389,7 +1407,7 @@ function renderItems() {
       <td><input type="text" class="form-control form-control-sm desc-input"
            value="${escHtml(item.description)}" data-i="${i}" data-field="description"></td>
       <td><input type="number" class="form-control form-control-sm amt-input"
-           value="${item.amount.toFixed(2)}" min="0" step="0.01"
+           value="${item.amount.toFixed(2)}" step="0.01"
            data-i="${i}" data-field="amount"></td>
       <td class="cust-cell"><select class="form-select form-select-sm cust-select"
            data-i="${i}" data-field="customer_key"></select></td>
@@ -1713,7 +1731,7 @@ function renderRcptByDate(container, receipts, period) {
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #fcd34d !important;border-top:none !important;">
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
-            <colgroup><col style="width:180px"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <colgroup><col style="width:220px"><col style="width:80px"><col style="width:90px"><col></colgroup>
             <thead><tr><th>Vendor</th><th style="padding-right:1rem">Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${pendRows}</tbody>
           </table>
@@ -1734,7 +1752,7 @@ function renderRcptByDate(container, receipts, period) {
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #f9a8d4 !important;border-top:none !important;">
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
-            <colgroup><col style="width:180px"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <colgroup><col style="width:220px"><col style="width:80px"><col style="width:90px"><col></colgroup>
             <thead><tr><th>Vendor</th><th style="padding-right:1rem">Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${unassRows}</tbody>
           </table>
@@ -1766,7 +1784,7 @@ function renderRcptByDate(container, receipts, period) {
       <div class="card border-0 shadow-sm" style="border-radius:0 0 6px 6px;border:1px solid #dee2e6 !important;border-top:none !important;">
         <div class="table-responsive">
           <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
-            <colgroup><col style="width:180px"><col style="width:80px"><col style="width:90px"><col></colgroup>
+            <colgroup><col style="width:220px"><col style="width:80px"><col style="width:90px"><col></colgroup>
             <thead><tr><th>Vendor</th><th style="padding-right:1rem">Items</th><th>Total</th><th>Customer(s)</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
@@ -1826,7 +1844,7 @@ function renderRcptByJob(container, receipts, period) {
       <td class="text-muted small" style="width:90px;white-space:nowrap;padding-right:.8rem">${escHtml(item.date||'')}</td>
       <td class="text-muted small" style="width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.vendor||'')}</td>
       <td class="small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.description||'')}${splitBadge}</td>
-      <td class="text-primary fw-semibold small" style="width:75px;text-align:right;white-space:nowrap">$${item.amount.toFixed(2)}</td>
+      <td class="text-primary fw-semibold small" style="width:75px;text-align:right;white-space:nowrap">${item.amount < 0 ? '-$' + (-item.amount).toFixed(2) : '$' + item.amount.toFixed(2)}</td>
       <td></td>
     </tr>`;
   };
@@ -3452,7 +3470,7 @@ function renderInvList(container, period, invs) {
       }).join('');
       const flagCell = [
         overdue ? '<span class="badge bg-danger" style="font-size:.58rem">Overdue</span>' : '',
-        inv.stale ? '<span class="badge ms-1" style="background:#f97316;color:#fff;font-size:.58rem">&#9888; Changed</span>' : '',
+        inv.stale ? `<span class="badge ms-1 stale-badge" style="background:#f97316;color:#fff;font-size:.58rem;cursor:default" data-period="${escHtml(period)}" data-id="${escHtml(inv.invoice_id)}">&#9888; Changed</span>` : '',
         inv.corrects ? '<span class="badge bg-secondary ms-1" style="font-size:.58rem">Corrected</span>' : '',
       ].filter(Boolean).join('');
       return `<tr style="${rowBg}">
@@ -3543,7 +3561,7 @@ function renderInvList(container, period, invs) {
             </div>
             <div class="text-end">
               ${STATUS_BADGE[statusKey]}${overdueBadge}
-              ${inv.stale ? '<div class="mt-1"><span class="badge" style="background:#f97316;font-size:.6rem" title="Hours or expenses were added after this invoice was generated">&#9888; Changed</span></div>' : ''}
+              ${inv.stale ? `<div class="mt-1"><span class="badge stale-badge" style="background:#f97316;font-size:.6rem;cursor:default" data-period="${escHtml(period)}" data-id="${escHtml(inv.invoice_id)}">&#9888; Changed</span></div>` : ''}
               <div class="fw-bold text-success mt-1">$${inv.total.toFixed(2)}</div>
             </div>
           </div>
@@ -4066,16 +4084,94 @@ function renderFinYear(yr, months) {
     </table>`;
 }
 
+// ── Vendor Spend ──────────────────────────────────────────────
+let _vendorData = null;
+let _vendorCat  = 'all';
+
+function renderVendorTable() {
+  const section = document.getElementById('fin-vendor-section');
+  const content = document.getElementById('fin-vendor-content');
+  if (!_vendorData) { section.style.display = 'none'; return; }
+  const { periods, vendors } = _vendorData;
+
+  const getAmt = (vd, period) => {
+    const p = vd[period];
+    if (!p) return 0;
+    if (_vendorCat === 'all')      return p.customer + p.personal + p.tools;
+    if (_vendorCat === 'customer') return p.customer;
+    return p.personal + p.tools;
+  };
+
+  const vendorTotals = Object.entries(vendors).map(([name, vd]) => ({
+    name,
+    total: periods.reduce((s, p) => s + getAmt(vd, p), 0)
+  })).filter(v => v.total !== 0).sort((a, b) => b.total - a.total);
+
+  if (!periods.length || !vendorTotals.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  const fmtP = p => { const [y,m] = p.split('_'); return MONTH_NAMES_SHORT[parseInt(m)-1] + " '" + y.slice(2); };
+  const fmtD = v => '$' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  const thead = `<thead class="table-light"><tr>
+    <th style="white-space:nowrap">Vendor</th>
+    ${periods.map(p=>`<th class="text-end" style="white-space:nowrap">${fmtP(p)}</th>`).join('')}
+    <th class="text-end fw-bold" style="white-space:nowrap">Total</th>
+  </tr></thead>`;
+
+  const tbody = vendorTotals.map(({name, total}) => {
+    const vd = vendors[name];
+    const cells = periods.map(p => {
+      const a = getAmt(vd, p);
+      return `<td class="text-end small">${a ? fmtD(a) : '<span class="text-muted">—</span>'}</td>`;
+    }).join('');
+    return `<tr>
+      <td class="small fw-semibold" style="white-space:nowrap">${escHtml(name)}</td>
+      ${cells}
+      <td class="text-end small fw-bold">${fmtD(total)}</td>
+    </tr>`;
+  }).join('');
+
+  const grandTotal = vendorTotals.reduce((s, v) => s + v.total, 0);
+  const colTotals  = periods.map(p => {
+    const t = vendorTotals.reduce((s,{name}) => s + getAmt(vendors[name], p), 0);
+    return `<td class="text-end small fw-bold">${t ? fmtD(t) : '—'}</td>`;
+  }).join('');
+  const tfoot = `<tfoot><tr style="border-top:2px solid #dee2e6">
+    <td class="small fw-bold">Total</td>
+    ${colTotals}
+    <td class="text-end small fw-bold">${fmtD(grandTotal)}</td>
+  </tr></tfoot>`;
+
+  content.innerHTML = `<table class="table table-sm table-hover align-middle mb-0">
+    ${thead}<tbody>${tbody}</tbody>${tfoot}</table>`;
+}
+
+document.getElementById('vendor-cat-toggle').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-cat]');
+  if (!btn) return;
+  _vendorCat = btn.dataset.cat;
+  document.querySelectorAll('#vendor-cat-toggle button').forEach(b => {
+    b.className = b === btn ? 'btn btn-sm btn-dark' : 'btn btn-sm btn-outline-secondary';
+  });
+  renderVendorTable();
+});
+// ──────────────────────────────────────────────────────────────
+
 async function loadFinancialsView() {
   const tabs       = document.getElementById('fin-year-tabs');
   const tabContent = document.getElementById('fin-year-content');
   const emptyMsg   = document.getElementById('fin-empty-msg');
   tabs.innerHTML = tabContent.innerHTML = '';
+  _vendorData = null;
 
   try {
-    const [invRes, hoursRes] = await Promise.all([fetch('/invoices'), fetch('/hours')]);
+    const [invRes, hoursRes, vendorRes] = await Promise.all([
+      fetch('/invoices'), fetch('/hours'), fetch('/expenses/vendor-summary', {cache:'no-store'})
+    ]);
     const invData   = await invRes.json();
     const hoursData = await hoursRes.json();
+    _vendorData     = await vendorRes.json();
 
     const hoursByPeriod = {};
     hoursData.forEach(h => { hoursByPeriod[h.period] = h; });
@@ -4105,6 +4201,8 @@ async function loadFinancialsView() {
       <div class="tab-pane fade${i===0?' show active':''}" id="fin-year-${yr}" role="tabpanel">
         ${renderFinYear(yr, years[yr])}
       </div>`).join('');
+
+    renderVendorTable();
   } catch(e) {
     tabContent.innerHTML = '<p class="text-muted small p-3">Could not load financial data.</p>';
   }
@@ -4533,6 +4631,109 @@ document.getElementById('msg-send-btn').addEventListener('click', async () => {
     btn.disabled = false; btn.innerHTML = '&#9993; Send';
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// STALE DIFF POPUP
+// ═══════════════════════════════════════════════════════════════
+(function() {
+  const popup   = document.getElementById('stale-diff-popup');
+  const content = document.getElementById('stale-diff-content');
+  const cache   = {};
+  let hideTimer = null;
+
+  function fmtD(v) { return '$' + Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function delta(v) {
+    if (Math.abs(v) < 0.005) return '';
+    return v > 0
+      ? ` <span style="color:#16a34a">+${fmtD(v)}</span>`
+      : ` <span style="color:#dc2626">-${fmtD(-v)}</span>`;
+  }
+
+  function renderDiff(d) {
+    if (d.error)       return '<span style="color:#dc2626">Could not load diff.</span>';
+    if (!d.has_changes) return '<span style="color:#6b7280">No data changes detected — may have already been fixed.</span>';
+
+    let html = '<div style="font-weight:700;color:#f97316;margin-bottom:8px">&#9888; What changed</div>';
+    const secLabel = t => `<div style="font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;margin:8px 0 4px">${t}</div>`;
+    const tbl = rows => `<table style="width:100%;border-collapse:collapse;font-size:.8rem">${rows}</table>`;
+    const row = (a,b,c,style='') => `<tr style="${style}"><td style="padding:2px 6px 2px 0;white-space:nowrap">${a}</td><td style="padding:2px 6px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b}</td><td style="padding:2px 0 2px 6px;text-align:right;white-space:nowrap">${c}</td></tr>`;
+
+    const lab = d.labor;
+    const hasLab = lab.added.length || lab.removed.length || lab.changed.length;
+    if (hasLab || Math.abs(lab.new_total - lab.old_total) > 0.005) {
+      html += secLabel('Labor');
+      let rows = '';
+      for (const e of lab.added)
+        rows += row(e.date, escHtml(e.description||'(no memo)'), `<span style="color:#16a34a">+${e.hours}h added</span>`, 'background:#f0fdf4');
+      for (const e of lab.removed)
+        rows += row(e.date, escHtml(e.description||'(no memo)'), `<span style="color:#dc2626">-${e.hours}h removed</span>`, 'background:#fef2f2');
+      for (const c of lab.changed)
+        rows += row(c.date, escHtml(c.description||'(no memo)'), `${c.old_hours}h → ${c.new_hours}h`);
+      if (hasLab)
+        rows += row('<strong>Labor total</strong>', '', `${fmtD(lab.old_total)} → ${fmtD(lab.new_total)}${delta(lab.new_total - lab.old_total)}`, 'border-top:1px solid #e5e7eb');
+      html += tbl(rows);
+    }
+
+    const mat = d.materials;
+    const hasMat = mat.added.length || mat.removed.length;
+    if (hasMat || Math.abs(mat.new_total - mat.old_total) > 0.005) {
+      html += secLabel('Materials');
+      let rows = '';
+      for (const m of mat.added)
+        rows += row(m.date, `${escHtml(m.vendor)} – ${escHtml(m.description||'')}`, `<span style="color:#16a34a">+${fmtD(m.amount)}</span>`, 'background:#f0fdf4');
+      for (const m of mat.removed)
+        rows += row(m.date, `${escHtml(m.vendor)} – ${escHtml(m.description||'')}`, `<span style="color:#dc2626">-${fmtD(m.amount)}</span>`, 'background:#fef2f2');
+      if (hasMat)
+        rows += row('<strong>Materials total</strong>', '', `${fmtD(mat.old_total)} → ${fmtD(mat.new_total)}${delta(mat.new_total - mat.old_total)}`, 'border-top:1px solid #e5e7eb');
+      html += tbl(rows);
+    }
+
+    const td = d.new_total - d.old_total;
+    if (Math.abs(td) > 0.005)
+      html += `<div style="margin-top:8px;padding-top:8px;border-top:2px solid #e5e7eb;font-weight:700">Invoice total: ${fmtD(d.old_total)} → ${fmtD(d.new_total)}${delta(td)}</div>`;
+
+    return html;
+  }
+
+  async function showFor(badge) {
+    clearTimeout(hideTimer);
+    const period = badge.dataset.period;
+    const id     = badge.dataset.id;
+    const key    = `${period}/${id}`;
+
+    // Position before showing so it doesn't flash in the wrong spot
+    const rect = badge.getBoundingClientRect();
+    const popW = 480;
+    let left = rect.left;
+    if (left + popW > window.innerWidth - 12) left = window.innerWidth - popW - 12;
+    popup.style.left = Math.max(8, left) + 'px';
+    popup.style.top  = (rect.bottom + 6) + 'px';
+    content.innerHTML = '<span style="color:#9ca3af">Loading…</span>';
+    popup.style.display = 'block';
+
+    if (!cache[key]) {
+      try {
+        const res = await fetch(`/invoices/${period}/${id}/diff`);
+        cache[key] = await res.json();
+      } catch(_) {
+        cache[key] = {error: true};
+      }
+    }
+    content.innerHTML = renderDiff(cache[key]);
+  }
+
+  function hide() {
+    hideTimer = setTimeout(() => { popup.style.display = 'none'; }, 120);
+  }
+
+  document.body.addEventListener('mouseenter', e => {
+    const b = e.target.closest('.stale-badge');
+    if (b) showFor(b);
+  }, true);
+  document.body.addEventListener('mouseleave', e => {
+    if (e.target.closest('.stale-badge')) hide();
+  }, true);
+})();
 </script>
 </body>
 </html>

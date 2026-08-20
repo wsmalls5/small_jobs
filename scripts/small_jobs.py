@@ -879,6 +879,35 @@ def download_expense(filename):
     return send_from_directory(str(EXPENSES), filename, as_attachment=True)
 
 
+@app.route("/expenses/vendor-summary")
+def expenses_vendor_summary():
+    db      = _load_customers()
+    periods = []
+    vendors = {}
+    for ep in sorted(EXPENSES.glob("expenses_*.json")):
+        period = ep.stem.replace("expenses_", "")
+        try:
+            receipts = json.loads(ep.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        has_data = False
+        for r in receipts:
+            vendor = (r.get("vendor") or "Unknown").strip() or "Unknown"
+            for item in r.get("items", []):
+                amt = float(item.get("amount") or 0)
+                if not amt:
+                    continue
+                ck    = item.get("customer_key", "")
+                ctype = db.get(ck, {}).get("customer_type", "individual")
+                cat   = "personal" if ctype == "personal" else "tools" if ctype == "tools" else "customer"
+                vendors.setdefault(vendor, {}).setdefault(period, {"customer": 0.0, "personal": 0.0, "tools": 0.0})
+                vendors[vendor][period][cat] = round(vendors[vendor][period][cat] + amt, 2)
+                has_data = True
+        if has_data and period not in periods:
+            periods.append(period)
+    return jsonify({"periods": sorted(periods), "vendors": vendors})
+
+
 @app.route("/expenses")
 def api_expenses():
     files = sorted(EXPENSES.glob("expenses_*.json"), reverse=True)
@@ -1302,10 +1331,64 @@ def _mark_invoices_stale(period, customer_keys):
         _save_invoices(period, invoices)
 
 
-# ── Invoice routes ───────────────────────────────────────────────────────────
+# ── Invoice helpers ──────────────────────────────────────────────────────────
 
 _NON_BILLABLE_TYPES = {"personal", "tools"}
 _NON_BILLABLE_KEYS  = {"personal_tools"}
+
+
+def _compute_live_invoice_data(period, customer_key, db):
+    """Recompute what an invoice would contain right now from live hours + expense data."""
+    rate = float(db.get(customer_key, {}).get("hourly_rate", 70))
+
+    hp = HOURS / f"hours_{period}.json"
+    raw_hours = json.loads(hp.read_text(encoding="utf-8-sig")).get("entries", []) if hp.exists() else []
+    labor_entries = sorted([
+        {
+            "date":        e.get("date", ""),
+            "description": e.get("memo", ""),
+            "hours":       float(e.get("hours", 0)),
+            "rate":        rate,
+            "amount":      round(float(e.get("hours", 0)) * rate, 2),
+        }
+        for e in raw_hours if e.get("customer_key") == customer_key
+    ], key=lambda x: x["date"])
+
+    ep = EXPENSES / f"expenses_{period}.json"
+    material_entries = []
+    if ep.exists():
+        for receipt in json.loads(ep.read_text(encoding="utf-8-sig")):
+            assigned = [i.get("customer_key","") for i in receipt.get("items",[]) if i.get("customer_key","")]
+            is_split = len(set(assigned)) > 1
+            for item in receipt.get("items", []):
+                if item.get("customer_key") != customer_key:
+                    continue
+                desc = item.get("description", "")
+                if item.get("is_tax"):
+                    pass
+                elif is_split:
+                    low = desc.lower().strip()
+                    desc = "Sales Tax – split receipt" if low in ("sales tax", "tax") else f"{desc} (split receipt)"
+                material_entries.append({
+                    "date":        receipt.get("receipt_date", ""),
+                    "vendor":      receipt.get("vendor", ""),
+                    "description": desc,
+                    "amount":      float(item.get("amount", 0)),
+                })
+        material_entries.sort(key=lambda x: x["date"])
+
+    labor_subtotal     = round(sum(e["amount"] for e in labor_entries), 2)
+    materials_subtotal = round(sum(m["amount"] for m in material_entries), 2)
+    return {
+        "labor_entries":     labor_entries,
+        "material_entries":  material_entries,
+        "labor_subtotal":    labor_subtotal,
+        "materials_subtotal": materials_subtotal,
+        "total":             round(labor_subtotal + materials_subtotal, 2),
+    }
+
+
+# ── Invoice routes ────────────────────────────────────────────────────────────
 
 @app.route("/invoices")
 def api_invoices_list():
@@ -1608,6 +1691,76 @@ def _build_invoice(inv_id, ck, cust, period, invoice_date, month_name,
         "stale":               False,
         "generated_at":        now,
     }
+
+
+@app.route("/invoices/<period>/<invoice_id>/diff")
+def invoice_diff(period, invoice_id):
+    invs = _load_invoices(period)
+    inv  = next((i for i in invs if i["invoice_id"] == invoice_id), None)
+    if not inv:
+        return jsonify({"error": "not found"}), 404
+    if not inv.get("stale"):
+        return jsonify({"has_changes": False})
+
+    db   = _load_customers()
+    live = _compute_live_invoice_data(period, inv["customer_key"], db)
+
+    # Labor diff — key by (date, description)
+    def lkey(e): return (e["date"], e.get("description",""))
+    stored_lab = {}
+    for e in inv.get("labor_entries", []):
+        stored_lab.setdefault(lkey(e), []).append(e)
+    live_lab = {}
+    for e in live["labor_entries"]:
+        live_lab.setdefault(lkey(e), []).append(e)
+
+    lab_added, lab_removed, lab_changed = [], [], []
+    for k in live_lab:
+        if k not in stored_lab:
+            lab_added.extend(live_lab[k])
+    for k in stored_lab:
+        if k not in live_lab:
+            lab_removed.extend(stored_lab[k])
+    for k in stored_lab:
+        if k in live_lab:
+            oh = sum(e["hours"] for e in stored_lab[k])
+            nh = sum(e["hours"] for e in live_lab[k])
+            if abs(oh - nh) > 0.001:
+                lab_changed.append({
+                    "date": k[0], "description": k[1],
+                    "old_hours": oh, "new_hours": nh,
+                    "old_amount": sum(e["amount"] for e in stored_lab[k]),
+                    "new_amount": sum(e["amount"] for e in live_lab[k]),
+                })
+
+    # Material diff — compare as multi-sets of (date, vendor, description, amount) tuples
+    def mat_tuple(m): return (m["date"], m.get("vendor",""), m.get("description",""), m["amount"])
+    from collections import Counter
+    stored_tups = Counter(mat_tuple(m) for m in inv.get("material_entries", []))
+    live_tups   = Counter(mat_tuple(m) for m in live["material_entries"])
+    mat_added   = [{"date":t[0],"vendor":t[1],"description":t[2],"amount":t[3]}
+                   for t,n in (live_tups - stored_tups).items() for _ in range(n)]
+    mat_removed = [{"date":t[0],"vendor":t[1],"description":t[2],"amount":t[3]}
+                   for t,n in (stored_tups - live_tups).items() for _ in range(n)]
+
+    return jsonify({
+        "has_changes":  bool(lab_added or lab_removed or lab_changed or mat_added or mat_removed),
+        "labor": {
+            "old_total": inv.get("labor_subtotal", 0),
+            "new_total": live["labor_subtotal"],
+            "added":     lab_added,
+            "removed":   lab_removed,
+            "changed":   lab_changed,
+        },
+        "materials": {
+            "old_total": inv.get("materials_subtotal", 0),
+            "new_total": live["materials_subtotal"],
+            "added":     mat_added,
+            "removed":   mat_removed,
+        },
+        "old_total": inv.get("total", 0),
+        "new_total": live["total"],
+    })
 
 
 @app.route("/invoices/<period>/<invoice_id>/status", methods=["PUT"])

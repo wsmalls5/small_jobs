@@ -310,14 +310,14 @@ function doPrint() {
         <td>{{ m.date }}</td>
         <td>{{ m.vendor }}</td>
         <td>{{ m.description }}</td>
-        <td class="r">${{ '%.2f'|format(m.amount) }}</td>
+        <td class="r">{{ '-' if m.amount < 0 else '' }}${{ '%.2f'|format(m.amount|abs) }}</td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot>
       <tr class="subtotal-row">
         <td colspan="3" style="text-align:right">Materials Subtotal</td>
-        <td class="r">${{ '%.2f'|format(inv.materials_subtotal) }}</td>
+        <td class="r">{{ '-' if inv.materials_subtotal < 0 else '' }}${{ '%.2f'|format(inv.materials_subtotal|abs) }}</td>
       </tr>
     </tfoot>
   </table>
