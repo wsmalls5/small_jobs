@@ -238,13 +238,13 @@
           <div class="col-md-6" id="cust-panel-hoa"></div>
         </div>
         <div id="cust-archived-section" class="mt-3" style="display:none">
-          <div style="border:2px solid #f97316;border-radius:8px;overflow:hidden">
-            <div id="cust-archived-header" style="background:#fff8f0;padding:.5rem 1rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none">
-              <span style="color:#f97316;font-weight:600;font-size:.85rem">&#128451; Archived Customers</span>
-              <span id="cust-archived-count" style="color:#f97316;font-size:.8rem">0 &#9660;</span>
+          <div class="card type-panel-card">
+            <div id="cust-archived-header" class="card-header" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none">
+              <span>Archived Customers</span>
+              <span id="cust-archived-count" class="fw-normal opacity-75">0 &#9660;</span>
             </div>
             <div id="cust-archived-body" style="display:none">
-              <div class="table-responsive">
+              <div class="type-panel-scroll">
                 <table class="table table-sm table-hover cust-table align-middle mb-0">
                   <thead><tr><th>Property</th><th>Bill To</th><th>Type</th><th>Rate</th></tr></thead>
                   <tbody id="cust-archived-tbody"></tbody>
@@ -1253,6 +1253,15 @@ document.addEventListener('change', e => {
 // ═══════════════════════════════════════════════════════════════
 const custSearch    = document.getElementById('cust-search');
 const custTbody     = document.getElementById('cust-tbody');
+custTbody.addEventListener('click', e => {
+  const hdr = e.target.closest('.cust-all-arch-hdr');
+  if (!hdr) return;
+  const archRows = custTbody.querySelectorAll('.cust-all-arch-row');
+  const arrow    = hdr.querySelector('.cust-all-arch-arrow');
+  const open     = archRows.length && archRows[0].style.display !== 'none';
+  archRows.forEach(r => { r.style.display = open ? 'none' : ''; });
+  if (arrow) arrow.textContent = open ? '▼' : '▲';
+});
 const addCustBtn    = document.getElementById('add-cust-btn');
 const custModal     = new bootstrap.Modal(document.getElementById('custModal'));
 const custSaveBtn   = document.getElementById('cust-save-btn');
@@ -1328,6 +1337,7 @@ function renderCustomerTables(filter = '') {
   if (archivedRows.length) {
     archSection.style.display = '';
     archCount.textContent = archivedRows.length + ' ▼';
+    archCount.className = 'fw-normal opacity-75';
     archTbody.innerHTML = archivedRows.map(c => `
       <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer;opacity:.75">
         <td class="fw-semibold small">${escHtml(c.property_label || c.key)}</td>
@@ -1350,9 +1360,13 @@ function renderCustomerTables(filter = '') {
     </tr>`).join('');
 
   const archivedHtml = archivedRows.length
-    ? `<tr><td colspan="5" style="background:#fff8f0;color:#f97316;font-weight:600;font-size:.78rem;text-align:center;padding:.35rem 0">&#128451; Archived (${archivedRows.length})</td></tr>` +
+    ? `<tr class="cust-all-arch-hdr" style="cursor:pointer;background:#f3f4f6">
+        <td colspan="5" style="color:#6b7280;font-weight:600;font-size:.78rem;padding:.4rem .75rem">
+          Archived (${archivedRows.length}) <span class="cust-all-arch-arrow">&#9660;</span>
+        </td>
+      </tr>` +
       archivedRows.map(c => `
-        <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer;opacity:.65">
+        <tr class="cust-row cust-all-arch-row" data-key="${escHtml(c.key)}" style="cursor:pointer;display:none;opacity:.65">
           <td class="text-muted">—</td>
           <td class="fw-semibold">${escHtml(c.property_label || c.key)}</td>
           <td class="text-muted">${escHtml(c.bill_to_name || '')}</td>
