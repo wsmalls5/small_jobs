@@ -237,6 +237,22 @@
           <div class="col-md-6" id="cust-panel-multi_property"></div>
           <div class="col-md-6" id="cust-panel-hoa"></div>
         </div>
+        <div id="cust-archived-section" class="mt-3" style="display:none">
+          <div style="border:2px solid #f97316;border-radius:8px;overflow:hidden">
+            <div id="cust-archived-header" style="background:#fff8f0;padding:.5rem 1rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none">
+              <span style="color:#f97316;font-weight:600;font-size:.85rem">&#128451; Archived Customers</span>
+              <span id="cust-archived-count" style="color:#f97316;font-size:.8rem">0 &#9660;</span>
+            </div>
+            <div id="cust-archived-body" style="display:none">
+              <div class="table-responsive">
+                <table class="table table-sm table-hover cust-table align-middle mb-0">
+                  <thead><tr><th>Property</th><th>Bill To</th><th>Type</th><th>Rate</th></tr></thead>
+                  <tbody id="cust-archived-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Full table view -->
@@ -736,7 +752,8 @@
         </div>
       </div>
       <div class="modal-footer" style="position:relative">
-        <button type="button" class="btn btn-outline-danger me-auto" id="cust-del-btn" style="display:none">Delete</button>
+        <button type="button" class="btn btn-outline-danger" id="cust-del-btn" style="display:none">Delete</button>
+        <button type="button" class="btn me-auto" id="cust-archive-btn" style="display:none;border:1px solid #f97316;color:#f97316;background:#fff">Archive</button>
         <button type="button" class="btn btn-outline-success" id="cust-msg-btn" style="display:none;position:absolute;left:50%;transform:translateX(-50%)">&#9993; Send a Message</button>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-primary" id="cust-save-btn">Save</button>
@@ -1131,6 +1148,8 @@ function fmtTimeCell(inT, outT) {
 
 function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], showQuickAdd = false) {
   selectEl.innerHTML = '';
+  selectEl.dataset.excludeTypes = excludeTypes.join(',');
+
   if (showQuickAdd) {
     const qa = document.createElement('option');
     qa.value = '__quick_add__';
@@ -1145,8 +1164,9 @@ function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], show
 
   const groups = {};
   S.customers.forEach(c => {
+    if (c.archived) return;
     if (excludeTypes.includes(c.type)) return;
-    if (c.key === 'personal_tools') return;  // legacy combined entry, replaced by 'tools' and 'personal'
+    if (c.key === 'personal_tools') return;
     if (!groups[c.type]) groups[c.type] = [];
     groups[c.type].push(c);
   });
@@ -1163,6 +1183,31 @@ function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], show
     });
     selectEl.appendChild(og);
   });
+
+  // If selectedKey is an archived customer, show it so it doesn't silently disappear
+  const selIsArchived = selectedKey && S.customers.find(c => c.key === selectedKey && c.archived);
+  if (selIsArchived) {
+    const og = document.createElement('optgroup');
+    og.label = 'Archived';
+    const opt = document.createElement('option');
+    opt.value = selIsArchived.key;
+    opt.textContent = selIsArchived.label + ' (archived)';
+    opt.selected = true;
+    og.appendChild(opt);
+    selectEl.appendChild(og);
+  } else {
+    const hasArchived = S.customers.some(
+      c => c.archived && !excludeTypes.includes(c.type) && c.key !== 'personal_tools'
+    );
+    if (hasArchived) {
+      const tog = document.createElement('option');
+      tog.value = '__show_archived__';
+      tog.textContent = '↓ Archived customers...';
+      tog.style.color = '#f97316';
+      tog.style.fontStyle = 'italic';
+      selectEl.appendChild(tog);
+    }
+  }
 }
 
 async function loadAllCustomers() {
@@ -1173,6 +1218,35 @@ async function loadAllCustomers() {
   S.custsFull.forEach(c => { S.custsByKey[c.key] = c; });
   buildCustomerSelect(singleSelect);
 }
+
+// Track prev select value so archived toggle can restore it
+document.addEventListener('change', e => {
+  if (e.target.tagName === 'SELECT' && e.target.value !== '__show_archived__')
+    e.target.dataset.prevValue = e.target.value;
+});
+
+// Capture-phase handler: intercept __show_archived__ before other listeners see it
+document.addEventListener('change', e => {
+  if (e.target.tagName !== 'SELECT' || e.target.value !== '__show_archived__') return;
+  e.target.value = e.target.dataset.prevValue || '';
+  const tog = e.target.querySelector('option[value="__show_archived__"]');
+  if (tog) tog.remove();
+  const excludeTypes = (e.target.dataset.excludeTypes || '').split(',').filter(Boolean);
+  const arch = (S.customers || []).filter(
+    c => c.archived && !excludeTypes.includes(c.type) && c.key !== 'personal_tools'
+  );
+  if (arch.length) {
+    const og = document.createElement('optgroup');
+    og.label = 'Archived';
+    arch.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.key;
+      opt.textContent = c.label + ' (archived)';
+      og.appendChild(opt);
+    });
+    e.target.appendChild(og);
+  }
+}, true);
 
 // ═══════════════════════════════════════════════════════════════
 // 4. CUSTOMER TAB
@@ -1205,7 +1279,7 @@ viewAllBtn.addEventListener('click', () => {
 
 function renderCustomerTables(filter = '') {
   const fl = filter.toLowerCase();
-  const rows = S.custsFull.filter(c => {
+  const allRows = S.custsFull.filter(c => {
     const ct = c.customer_type || '';
     if (ct === 'personal' || ct === 'tools') return false;
     if (!fl) return true;
@@ -1214,8 +1288,10 @@ function renderCustomerTables(filter = '') {
     if ((c.aliases || []).some(a => a.toLowerCase().includes(fl))) return true;
     return false;
   });
+  const rows         = allRows.filter(c => !c.archived);
+  const archivedRows = allRows.filter(c =>  c.archived);
 
-  // 4 type panels
+  // 4 type panels — active customers only
   ['rental_advisor','individual','multi_property','hoa'].forEach(type => {
     const panel = document.getElementById(`cust-panel-${type}`);
     if (!panel) return;
@@ -1245,22 +1321,60 @@ function renderCustomerTables(filter = '') {
       </div>`;
   });
 
-  // Full table
-  custTbody.innerHTML = rows.length
-    ? rows.map((c, i) => `
-        <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer">
-          <td class="text-muted">${i+1}</td>
+  // Archived panel (type view)
+  const archSection = document.getElementById('cust-archived-section');
+  const archCount   = document.getElementById('cust-archived-count');
+  const archTbody   = document.getElementById('cust-archived-tbody');
+  if (archivedRows.length) {
+    archSection.style.display = '';
+    archCount.textContent = archivedRows.length + ' ▼';
+    archTbody.innerHTML = archivedRows.map(c => `
+      <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer;opacity:.75">
+        <td class="fw-semibold small">${escHtml(c.property_label || c.key)}</td>
+        <td class="text-muted small">${escHtml(c.bill_to_name || '')}</td>
+        <td><span class="type-badge type-${c.customer_type||'individual'}" style="opacity:.8">${escHtml(TYPE_DISPLAY[c.customer_type]||c.customer_type||'Individual')}</span></td>
+        <td class="text-muted small" style="white-space:nowrap">$${parseFloat(c.hourly_rate||70).toFixed(0)}/h</td>
+      </tr>`).join('');
+  } else {
+    archSection.style.display = 'none';
+  }
+
+  // Full table — active first, archived below with separator
+  const activeHtml = rows.map((c, i) => `
+    <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer">
+      <td class="text-muted">${i+1}</td>
+      <td class="fw-semibold">${escHtml(c.property_label || c.key)}</td>
+      <td class="text-muted">${escHtml(c.bill_to_name || '')}</td>
+      <td>$${parseFloat(c.hourly_rate||70).toFixed(0)}/h</td>
+      <td><span class="type-badge type-${c.customer_type||'individual'}">${escHtml(TYPE_DISPLAY[c.customer_type]||c.customer_type||'Individual')}</span></td>
+    </tr>`).join('');
+
+  const archivedHtml = archivedRows.length
+    ? `<tr><td colspan="5" style="background:#fff8f0;color:#f97316;font-weight:600;font-size:.78rem;text-align:center;padding:.35rem 0">&#128451; Archived (${archivedRows.length})</td></tr>` +
+      archivedRows.map(c => `
+        <tr class="cust-row" data-key="${escHtml(c.key)}" style="cursor:pointer;opacity:.65">
+          <td class="text-muted">—</td>
           <td class="fw-semibold">${escHtml(c.property_label || c.key)}</td>
           <td class="text-muted">${escHtml(c.bill_to_name || '')}</td>
           <td>$${parseFloat(c.hourly_rate||70).toFixed(0)}/h</td>
-          <td><span class="type-badge type-${c.customer_type||'individual'}">${escHtml(TYPE_DISPLAY[c.customer_type]||c.customer_type||'Individual')}</span></td>
+          <td><span class="type-badge type-${c.customer_type||'individual'}" style="opacity:.75">${escHtml(TYPE_DISPLAY[c.customer_type]||c.customer_type||'Individual')}</span></td>
         </tr>`).join('')
-    : `<tr><td colspan="5" class="text-center text-muted py-4">No customers found.</td></tr>`;
+    : '';
+
+  custTbody.innerHTML = (activeHtml || `<tr><td colspan="5" class="text-center text-muted py-4">No active customers found.</td></tr>`) + archivedHtml;
 }
 
 function loadCustomerTab() {
   renderCustomerTables(custSearch.value);
 }
+
+document.getElementById('cust-archived-header').addEventListener('click', () => {
+  const body  = document.getElementById('cust-archived-body');
+  const count = document.getElementById('cust-archived-count');
+  const open  = body.style.display !== 'none';
+  body.style.display  = open ? 'none' : '';
+  count.textContent   = count.textContent.replace(open ? '▲' : '▼', open ? '▼' : '▲');
+});
 
 custSearch.addEventListener('input', () => renderCustomerTables(custSearch.value));
 
@@ -1284,6 +1398,10 @@ document.getElementById('tab-customers').addEventListener('click', async e => {
   (c.aliases || []).forEach(a => addAliasRow(a));
   document.getElementById('cust-del-btn').style.display = '';
   document.getElementById('cust-msg-btn').style.display = c.email ? '' : 'none';
+  const archBtn1 = document.getElementById('cust-archive-btn');
+  archBtn1.style.display    = '';
+  archBtn1.textContent      = c.archived ? 'Activate' : 'Archive';
+  archBtn1.dataset.archived = c.archived ? 'true' : 'false';
   custModal.show();
 });
 
@@ -1303,6 +1421,27 @@ document.getElementById('cust-del-btn').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('cust-archive-btn').addEventListener('click', async () => {
+  const key        = document.getElementById('cust-edit-key').value;
+  const label      = document.getElementById('cm-label').value || key;
+  const archBtn    = document.getElementById('cust-archive-btn');
+  const isArchived = archBtn.dataset.archived === 'true';
+  if (!confirm(`${isArchived ? 'Activate' : 'Archive'} "${label}"?`)) return;
+  custModal.hide();
+  const res = await fetch(`/customers/${encodeURIComponent(key)}`, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({archived: !isArchived}),
+  });
+  const d = await res.json();
+  if (d.ok) {
+    showToast(`${label} ${isArchived ? 'activated' : 'archived'}`, isArchived ? 'success' : 'warning');
+    await loadAllCustomers();
+    loadCustomerTab();
+  } else {
+    showToast('Update failed', 'danger');
+  }
+});
+
 addCustBtn.addEventListener('click', () => {
   document.getElementById('cust-modal-title').textContent = 'Add Customer';
   document.getElementById('cust-edit-key').value  = '';
@@ -1314,8 +1453,9 @@ addCustBtn.addEventListener('click', () => {
   document.getElementById('cm-rate').value         = '70';
   document.getElementById('cm-type').value         = 'individual';
   aliasList.innerHTML = '';
-  document.getElementById('cust-del-btn').style.display = 'none';
-  document.getElementById('cust-msg-btn').style.display = 'none';
+  document.getElementById('cust-del-btn').style.display     = 'none';
+  document.getElementById('cust-msg-btn').style.display     = 'none';
+  document.getElementById('cust-archive-btn').style.display = 'none';
   custModal.show();
 });
 
@@ -2199,13 +2339,15 @@ saveBtn.addEventListener('click', async () => {
       if (!ok) return;
     }
   }
+  const dateBlank = !dateInput.value.trim();
+  if (dateBlank) showToast('No date — receipt saved for review', 'warning');
   const payload = {
     filename:       S.filename,
     vendor:         vendorInput.value.trim(),
     receipt_date:   dateInput.value,
     single_job:     S.singleJob,
     receipt_total:  parseFloat(document.getElementById('receipt-total-input').value) || null,
-    pending_review: false,
+    pending_review: dateBlank ? true : false,
     items,
   };
   saveBtn.disabled    = true;
@@ -3901,6 +4043,10 @@ invMonthContent.addEventListener('click', async e => {
     (c.aliases || []).forEach(a => addAliasRow(a));
     document.getElementById('cust-del-btn').style.display = '';
     document.getElementById('cust-msg-btn').style.display = c.email ? '' : 'none';
+    const archBtn2 = document.getElementById('cust-archive-btn');
+    archBtn2.style.display    = '';
+    archBtn2.textContent      = c.archived ? 'Activate' : 'Archive';
+    archBtn2.dataset.archived = c.archived ? 'true' : 'false';
     custModal.show();
     return;
   }

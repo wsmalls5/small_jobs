@@ -475,7 +475,8 @@ def api_customers():
         db = json.load(f)
     TYPE_ORDER = {"rental_advisor": 0, "hoa": 1, "multi_property": 2, "individual": 3}
     out = sorted(
-        [{"key": k, "label": c.get("property_label", k), "type": c.get("customer_type", "individual")}
+        [{"key": k, "label": c.get("property_label", k), "type": c.get("customer_type", "individual"),
+          "archived": bool(c.get("archived", False))}
          for k, c in db.items()],
         key=lambda x: (TYPE_ORDER.get(x["type"], 9), x["label"].lower()),
     )
@@ -537,6 +538,7 @@ def api_customer_create():
         "hourly_rate":    float(body.get("hourly_rate", 70.0)),
         "customer_type":  body.get("customer_type", "individual"),
         "aliases":        body.get("aliases", []),
+        "archived":       False,
     }
     _save_customers(db)
     return jsonify({"ok": True, "key": key})
@@ -558,6 +560,8 @@ def api_customer_update(key):
         cust["hourly_rate"] = float(body["hourly_rate"])
     if "aliases" in body:
         cust["aliases"] = body["aliases"]
+    if "archived" in body:
+        cust["archived"] = bool(body["archived"])
 
     _save_customers(db)
     return jsonify({"ok": True})
@@ -861,7 +865,7 @@ def api_save():
         "receipt_file":   body.get("filename", ""),
         "items":          items,
         "receipt_total":  body.get("receipt_total") or round(sum(i.get("amount", 0) for i in items), 2),
-        "pending_review": bool(body.get("pending_review", False)),
+        "pending_review": True if not receipt_date.strip() else bool(body.get("pending_review", False)),
     }
 
     records.append(record)
@@ -963,13 +967,17 @@ def update_receipt(period, receipt_id):
         ck = item.get("customer_key", "")
         item["property_label"] = db.get(ck, {}).get("property_label", "")
 
+    new_date        = body.get("receipt_date", records[idx].get("receipt_date", ""))
+    new_pending     = bool(body.get("pending_review", False))
+    if not new_date.strip():
+        new_pending = True
     records[idx].update({
-        "receipt_date":   body.get("receipt_date",   records[idx].get("receipt_date", "")),
+        "receipt_date":   new_date,
         "vendor":         body.get("vendor",          records[idx].get("vendor", "")),
         "single_job":     body.get("single_job",      records[idx].get("single_job", False)),
         "items":          items,
         "receipt_total":  body.get("receipt_total") or round(sum(i.get("amount", 0) for i in items), 2),
-        "pending_review": bool(body.get("pending_review", False)),
+        "pending_review": new_pending,
     })
 
     # Check if the date moved to a different month — if so, migrate the record
