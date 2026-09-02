@@ -239,7 +239,7 @@
         </div>
         <div id="cust-archived-section" class="mt-3" style="display:none">
           <div class="card type-panel-card">
-            <div id="cust-archived-header" class="card-header" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none">
+            <div id="cust-archived-header" class="card-header" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none;background:#fff8f0">
               <span>Archived Customers</span>
               <span id="cust-archived-count" class="fw-normal opacity-75">0 &#9660;</span>
             </div>
@@ -1148,8 +1148,6 @@ function fmtTimeCell(inT, outT) {
 
 function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], showQuickAdd = false) {
   selectEl.innerHTML = '';
-  selectEl.dataset.excludeTypes = excludeTypes.join(',');
-
   if (showQuickAdd) {
     const qa = document.createElement('option');
     qa.value = '__quick_add__';
@@ -1184,29 +1182,21 @@ function buildCustomerSelect(selectEl, selectedKey = '', excludeTypes = [], show
     selectEl.appendChild(og);
   });
 
-  // If selectedKey is an archived customer, show it so it doesn't silently disappear
-  const selIsArchived = selectedKey && S.customers.find(c => c.key === selectedKey && c.archived);
-  if (selIsArchived) {
+  // Always show archived customers at the bottom in their own optgroup
+  const archivedOpts = S.customers.filter(
+    c => c.archived && !excludeTypes.includes(c.type) && c.key !== 'personal_tools'
+  );
+  if (archivedOpts.length) {
     const og = document.createElement('optgroup');
     og.label = 'Archived';
-    const opt = document.createElement('option');
-    opt.value = selIsArchived.key;
-    opt.textContent = selIsArchived.label + ' (archived)';
-    opt.selected = true;
-    og.appendChild(opt);
+    archivedOpts.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.key;
+      opt.textContent = c.label;
+      if (c.key === selectedKey) opt.selected = true;
+      og.appendChild(opt);
+    });
     selectEl.appendChild(og);
-  } else {
-    const hasArchived = S.customers.some(
-      c => c.archived && !excludeTypes.includes(c.type) && c.key !== 'personal_tools'
-    );
-    if (hasArchived) {
-      const tog = document.createElement('option');
-      tog.value = '__show_archived__';
-      tog.textContent = '↓ Archived customers...';
-      tog.style.color = '#f97316';
-      tog.style.fontStyle = 'italic';
-      selectEl.appendChild(tog);
-    }
   }
 }
 
@@ -1219,34 +1209,6 @@ async function loadAllCustomers() {
   buildCustomerSelect(singleSelect);
 }
 
-// Track prev select value so archived toggle can restore it
-document.addEventListener('change', e => {
-  if (e.target.tagName === 'SELECT' && e.target.value !== '__show_archived__')
-    e.target.dataset.prevValue = e.target.value;
-});
-
-// Capture-phase handler: intercept __show_archived__ before other listeners see it
-document.addEventListener('change', e => {
-  if (e.target.tagName !== 'SELECT' || e.target.value !== '__show_archived__') return;
-  e.target.value = e.target.dataset.prevValue || '';
-  const tog = e.target.querySelector('option[value="__show_archived__"]');
-  if (tog) tog.remove();
-  const excludeTypes = (e.target.dataset.excludeTypes || '').split(',').filter(Boolean);
-  const arch = (S.customers || []).filter(
-    c => c.archived && !excludeTypes.includes(c.type) && c.key !== 'personal_tools'
-  );
-  if (arch.length) {
-    const og = document.createElement('optgroup');
-    og.label = 'Archived';
-    arch.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.key;
-      opt.textContent = c.label + ' (archived)';
-      og.appendChild(opt);
-    });
-    e.target.appendChild(og);
-  }
-}, true);
 
 // ═══════════════════════════════════════════════════════════════
 // 4. CUSTOMER TAB
@@ -2334,7 +2296,7 @@ saveBtn.addEventListener('click', async () => {
     singleSelect.focus();
     return;
   }
-  if (S.items.every(it => !(parseFloat(it.amount) > 0))) {
+  if (S.items.every(it => !parseFloat(it.amount))) {
     showToast('Add at least one item with an amount before saving.', 'danger');
     return;
   }
@@ -2413,7 +2375,7 @@ document.getElementById('save-for-later-btn').addEventListener('click', async ()
     singleSelect.focus();
     return;
   }
-  if (S.items.every(it => !(parseFloat(it.amount) > 0))) {
+  if (S.items.every(it => !parseFloat(it.amount))) {
     showToast('Add at least one item with an amount before saving.', 'danger');
     return;
   }
