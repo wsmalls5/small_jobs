@@ -400,6 +400,14 @@
                 </div>
                 <img id="receipt-img" src="" alt="Receipt">
                 <embed id="receipt-pdf" src="" type="application/pdf" style="display:none">
+                <div id="rcpt-no-image-upload" style="display:none;text-align:center;padding:24px 12px">
+                  <p class="text-muted small mb-2">No receipt image attached.</p>
+                  <label class="btn btn-sm btn-outline-primary" style="cursor:pointer">
+                    &#128247; Upload Image
+                    <input type="file" id="rcpt-img-file-input" accept=".jpg,.jpeg,.png,.pdf,.heic,.webp" style="display:none">
+                  </label>
+                  <p id="rcpt-img-upload-status" class="text-muted small mt-2 mb-0" style="display:none"></p>
+                </div>
               </div>
             </div>
             <details class="mt-2">
@@ -416,7 +424,8 @@
                 <div class="row g-3 mb-3">
                   <div class="col-sm-6">
                     <label class="form-label fw-semibold">Vendor / Store</label>
-                    <input id="vendor-input" type="text" class="form-control" placeholder="e.g. Home Depot">
+                    <input id="vendor-input" type="text" class="form-control" placeholder="e.g. Home Depot" list="vendor-suggestions" autocomplete="off">
+                    <datalist id="vendor-suggestions"></datalist>
                   </div>
                   <div class="col-sm-4">
                     <label class="form-label fw-semibold">Receipt Date</label>
@@ -460,7 +469,7 @@
                   <input id="receipt-total-input" type="number" step="0.01" min="0"
                          class="form-control form-control-sm" style="width:110px" placeholder="0.00">
                   <button id="calc-single-tax-btn" class="btn btn-sm btn-outline-secondary" style="display:none">= Calc Tax</button>
-                  <button id="calc-split-tax-btn"  class="btn btn-sm btn-outline-warning"   style="display:none">= Split Tax</button>
+                  <button id="calc-split-tax-btn"  class="btn btn-sm btn-outline-warning"   style="display:none">= Split / Generate Sales Tax</button>
                 </div>
               </div>
             </div>
@@ -573,10 +582,6 @@
     <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
       <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Invoices</h6>
       <div class="d-flex gap-2 align-items-center">
-        <div class="btn-group btn-group-sm" id="inv-view-toggle" role="group">
-          <button type="button" class="btn btn-dark" data-invview="cards">Cards</button>
-          <button type="button" class="btn btn-outline-secondary" data-invview="table">Table</button>
-        </div>
         <button id="inv-net-days-btn" class="btn btn-sm btn-outline-danger" title="Click to change net days">Net20 days</button>
         <input type="number" id="inv-net-days-input" min="1" max="365" value="20" placeholder="days">
         <div class="btn-group btn-group-sm" id="inv-filter-group" role="group">
@@ -588,6 +593,11 @@
           <button type="button" class="btn btn-outline-warning"  data-filter="changed" style="color:#f97316;border-color:#f97316">Changed</button>
           <button type="button" class="btn btn-outline-danger"   data-filter="overdue">Overdue</button>
         </div>
+        <div class="btn-group btn-group-sm" id="inv-view-toggle" role="group">
+          <button type="button" class="btn btn-dark" data-invview="cards">Cards</button>
+          <button type="button" class="btn btn-outline-secondary" data-invview="table">Table</button>
+        </div>
+        <button class="btn btn-sm btn-danger" id="inv-overdue-btn" style="display:none" onclick="openOverdueModal()">&#9888; Overdue Reminder</button>
         <button class="btn btn-sm btn-primary" id="inv-solo-btn">&#9889; Generate Single Invoice &#9889;</button>
         <button class="btn btn-sm btn-success" id="inv-generate-btn">&#9889; Generate All Invoices &#9889;</button>
       </div>
@@ -598,6 +608,28 @@
       <div id="inv-empty-msg" class="text-center text-muted py-5" style="display:none">
         <div style="font-size:2.5rem">&#128203;</div>
         <p class="mt-2">No invoices yet — import hours then click <strong>Generate Invoices</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Overdue Reminder Modal -->
+  <div class="modal fade" id="overdueReminderModal" tabindex="-1" aria-labelledby="overdueReminderModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title fw-semibold text-danger" id="overdueReminderModalLabel">&#9888; Overdue Reminder</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="overdueModalBody">
+          <p class="text-muted">Loading…</p>
+        </div>
+        <div class="modal-footer d-flex justify-content-between align-items-center">
+          <div id="overdueModalStatus" class="small"></div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-danger" id="overdueSendBtn" onclick="sendOverdueReminders()">&#9993; Send to Selected</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1730,6 +1762,7 @@ async function loadReceiptsMainView() {
     const newestPeriod = data[data.length - 1].period;
     const activePeriod = (lastActiveRcptPeriod && data.some(h => h.period === lastActiveRcptPeriod))
                          ? lastActiveRcptPeriod : newestPeriod;
+    lastActiveRcptPeriod = activePeriod;
     tabs.innerHTML = data.map(h => {
       const hasPending    = (h.records||[]).some(r => r.pending_review);
       const hasUnassigned = (h.records||[]).some(r => !r.pending_review && (r.items||[]).some(i => !i.customer_key));
@@ -1835,7 +1868,7 @@ function renderRcptByDate(container, receipts, period) {
   const custText = uniqueCusts ? ` &middot; ${uniqueCusts} Customer${uniqueCusts!==1?'s':''}` : '';
   let html = `<div class="d-flex align-items-center gap-3 mb-3 pt-1">
     <span class="text-muted small" style="white-space:nowrap">${receipts.length} receipt${receipts.length!==1?'s':''}${custText}</span>
-    <input type="search" class="form-control form-control-sm rcpt-search-input" placeholder="Search vendor or customer…" style="max-width:240px" value="${escHtml(_rcptSearchState[period]||'')}">
+    <input type="text" autocomplete="off" class="form-control form-control-sm rcpt-search-input" placeholder="Search vendor or customer…" style="max-width:240px" value="${escHtml(_rcptSearchState[period]||'')}">
     <span class="fw-semibold text-primary ms-auto" style="white-space:nowrap">$${grandTotal.toFixed(2)} total</span>
   </div>`;
 
@@ -1955,14 +1988,14 @@ function renderRcptByJob(container, receipts, period) {
   const custTextJ = uniqueCustsJ ? ` &middot; ${uniqueCustsJ} Customer${uniqueCustsJ!==1?'s':''}` : '';
   let html = `<div class="d-flex align-items-center gap-3 mb-3 pt-1">
     <span class="text-muted small" style="white-space:nowrap">${receipts.length} receipt${receipts.length!==1?'s':''}${custTextJ}</span>
-    <input type="search" class="form-control form-control-sm rcpt-search-input" placeholder="Search vendor or customer…" style="max-width:240px" value="${escHtml(_rcptSearchState[period]||'')}">
+    <input type="text" autocomplete="off" class="form-control form-control-sm rcpt-search-input" placeholder="Search vendor or customer…" style="max-width:240px" value="${escHtml(_rcptSearchState[period]||'')}">
     <span class="fw-semibold text-primary ms-auto" style="white-space:nowrap">$${grandTotal.toFixed(2)} total</span>
   </div>`;
-  const makeItemRow = item => {
+  const makeItemRow = (item, custLabel = '') => {
     const splitBadge = item.is_split ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
     const rowStyle = item.is_pending ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
     const rowClass = (!item.is_pending && item.receipt_id === _lastImportedId) ? 'rcpt-row-new' : '';
-    const _jobSearchVal = [item.vendor||'', item.description||''].join(' ').toLowerCase();
+    const _jobSearchVal = [item.vendor||'', item.description||'', custLabel].join(' ').toLowerCase();
     return `<tr class="${rowClass}" style="${rowStyle}" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}" data-search="${escHtml(_jobSearchVal)}">
       <td class="text-muted small" style="width:90px;white-space:nowrap;padding-right:.8rem">${escHtml(item.date||'')}</td>
       <td class="text-muted small" style="width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.vendor||'')}</td>
@@ -1982,7 +2015,7 @@ function renderRcptByJob(container, receipts, period) {
           <table class="table table-sm table-hover align-middle mb-0" style="table-layout:fixed;width:100%">
             <colgroup><col style="width:90px"><col style="width:220px"><col style="width:400px"><col style="width:75px"><col></colgroup>
             <thead><tr><th>Date</th><th>Vendor</th><th>Description</th><th style="text-align:right">Amount</th><th></th></tr></thead>
-            <tbody>${bucket.items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(makeItemRow).join('')}</tbody>
+            <tbody>${bucket.items.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(item => makeItemRow(item, label)).join('')}</tbody>
           </table>
         </div>
       </div>
@@ -2049,6 +2082,7 @@ async function loadReceiptForEdit(period, id) {
   rawLines.textContent = '';
   ocrNotice.style.display = 'none';
 
+  document.getElementById('rcpt-no-image-upload').style.display = 'none';
   if (record.receipt_file) {
     const ext = record.receipt_file.split('.').pop().toLowerCase();
     const url = '/uploads/' + record.receipt_file;
@@ -2070,8 +2104,9 @@ async function loadReceiptForEdit(period, id) {
     receiptImg.style.display = 'none';
     receiptPdf.style.display = 'none';
     zoomControls.style.display = 'none';
-    document.getElementById('preview-col').style.display = 'none';
-    document.getElementById('rcpt-form-col').className   = 'col-12';
+    document.getElementById('rcpt-no-image-upload').style.display = '';
+    document.getElementById('preview-col').style.display = '';
+    document.getElementById('rcpt-form-col').className   = 'col-md-8';
   }
 
   S.pendingReview = record.pending_review || false;
@@ -2148,6 +2183,33 @@ fileInput.addEventListener('change',   ()  => handleFile(fileInput.files[0]));
 
 document.getElementById('add-receipt-manual-btn').addEventListener('click', showManualEntry);
 document.getElementById('add-receipt-import-btn').addEventListener('click', showReceiptsUpload);
+
+document.getElementById('rcpt-img-file-input').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file || !S.editId || !S.editPeriod) return;
+  const status = document.getElementById('rcpt-img-upload-status');
+  status.textContent = 'Uploading…';
+  status.style.display = '';
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res  = await fetch(`/receipts/${S.editPeriod}/${S.editId}/upload-image`, { method:'POST', body:fd });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('rcpt-no-image-upload').style.display = 'none';
+      receiptImg.src = '/uploads/' + data.filename;
+      receiptImg.style.display = '';
+      receiptPdf.style.display = 'none';
+      zoomLevel = 1.0; applyZoom();
+      zoomControls.style.display = 'flex';
+      status.style.display = 'none';
+    } else {
+      status.textContent = data.error || 'Upload failed.';
+    }
+  } catch(e) {
+    status.textContent = 'Upload failed.';
+  }
+});
 document.getElementById('receipts-back-btn').addEventListener('click', showReceiptsTable);
 document.getElementById('cancel-btn').addEventListener('click', showReceiptsTable);
 document.getElementById('save-cancel-btn').addEventListener('click', showReceiptsTable);
@@ -2435,7 +2497,13 @@ document.getElementById('save-for-later-btn').addEventListener('click', async ()
 document.getElementById('tab-receipts-btn').addEventListener('show.bs.tab', showReceiptsTable);
 
 // ── Vendor sub-tab ───────────────────────────────────────────────────────────
+function populateVendorDatalist(vendors) {
+  const dl = document.getElementById('vendor-suggestions');
+  if (dl) dl.innerHTML = vendors.map(v => `<option value="${escHtml(v)}"></option>`).join('');
+}
+
 function renderVendorList(vendors) {
+  populateVendorDatalist(vendors);
   const ul = document.getElementById('vendors-list');
   ul.innerHTML = vendors.length ? vendors.map(v => `
     <li class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
@@ -2493,6 +2561,11 @@ function _applyHoursSearch(container, q) {
   container.querySelectorAll('tr[data-search]').forEach(row => {
     row.style.display = (!s || row.dataset.search.includes(s)) ? '' : 'none';
   });
+  container.querySelectorAll('div.mb-3').forEach(grp => {
+    const rows = grp.querySelectorAll('tr[data-search]');
+    if (!rows.length) return;
+    grp.style.display = (!s || [...rows].some(r => r.style.display !== 'none')) ? '' : 'none';
+  });
 }
 
 document.getElementById('hoursMonthContent').addEventListener('input', e => {
@@ -2513,6 +2586,11 @@ function _applyRcptSearch(container, q) {
   const s = q.trim().toLowerCase();
   container.querySelectorAll('tr[data-search]').forEach(row => {
     row.style.display = (!s || row.dataset.search.includes(s)) ? '' : 'none';
+  });
+  container.querySelectorAll('div.mb-3').forEach(grp => {
+    const rows = grp.querySelectorAll('tr[data-search]');
+    if (!rows.length) return;
+    grp.style.display = (!s || [...rows].some(r => r.style.display !== 'none')) ? '' : 'none';
   });
 }
 
@@ -2576,6 +2654,7 @@ async function loadHoursMainView() {
     const newestPeriod = visible[visible.length - 1].period;
     const activePeriod = (lastActiveHoursPeriod && visible.some(h => h.period === lastActiveHoursPeriod))
                          ? lastActiveHoursPeriod : newestPeriod;
+    lastActiveHoursPeriod = activePeriod;
     monthTabs.innerHTML = visible.map(h => `
       <li class="nav-item" role="presentation">
         <button class="nav-link${h.period === activePeriod ? ' active' : ''}"
@@ -2672,7 +2751,7 @@ function renderByJob(container, entries, period) {
   let html = `
     <div class="d-flex align-items-center gap-3 mb-3 pt-1">
       <span class="text-muted small" style="white-space:nowrap">${entries.length} entr${entries.length!==1?'ies':'y'}</span>
-      <input type="search" class="form-control form-control-sm hours-search-input" placeholder="Search customer…" style="max-width:220px" value="${escHtml(_hoursSearchState[period]||'')}">
+      <input type="text" autocomplete="off" class="form-control form-control-sm hours-search-input" placeholder="Search customer…" style="max-width:220px" value="${escHtml(_hoursSearchState[period]||'')}">
       <div class="text-end ms-auto" style="white-space:nowrap">
         <div class="fw-semibold text-primary">${totalHours.toFixed(2)}h total</div>
         ${revenueHeader}
@@ -2910,7 +2989,7 @@ function renderByDay(container, entries, period) {
   let html = `
     <div class="d-flex align-items-center gap-3 mb-3 pt-1">
       <span class="text-muted small" style="white-space:nowrap">${sorted.length} entr${sorted.length!==1?'ies':'y'}</span>
-      <input type="search" class="form-control form-control-sm hours-search-input" placeholder="Search customer…" style="max-width:220px" value="${escHtml(_hoursSearchState[period]||'')}">
+      <input type="text" autocomplete="off" class="form-control form-control-sm hours-search-input" placeholder="Search customer…" style="max-width:220px" value="${escHtml(_hoursSearchState[period]||'')}">
       <div class="text-end ms-auto" style="white-space:nowrap">
         <div class="fw-semibold text-primary">${totalHours.toFixed(2)}h total</div>
         ${revSummary}
@@ -3464,6 +3543,18 @@ function _applyInvSearch(container, q) {
   });
 }
 
+// Clear search bars when switching main tabs (not month sub-tabs)
+document.addEventListener('shown.bs.tab', e => {
+  if (e.target.dataset.period) return;  // month sub-tab — ignore
+  Object.keys(_rcptSearchState).forEach(k => delete _rcptSearchState[k]);
+  Object.keys(_hoursSearchState).forEach(k => delete _hoursSearchState[k]);
+  Object.keys(_invSearchState).forEach(k => delete _invSearchState[k]);
+  document.querySelectorAll('.rcpt-search-input, .hours-search-input, .inv-search-input').forEach(inp => { inp.value = ''; });
+  if (lastActiveRcptPeriod) { const c = document.getElementById(`rcpt-detail-${lastActiveRcptPeriod}`); if (c) _applyRcptSearch(c, ''); }
+  if (lastActiveHoursPeriod) { const c = document.getElementById(`hours-month-detail-${lastActiveHoursPeriod}`); if (c) _applyHoursSearch(c, ''); }
+  if (lastActiveInvPeriod) { const c = document.getElementById(`inv-detail-${lastActiveInvPeriod}`); if (c) _applyInvSearch(c, ''); }
+});
+
 const STATUS_BADGE = {
   draft: '<span class="badge bg-secondary">Draft</span>',
   sent:  '<span class="badge bg-primary">Sent</span>',
@@ -3497,6 +3588,8 @@ async function loadInvoicesMainView() {
     const data = await res.json();
     data.sort((a, b) => a.period.localeCompare(b.period));
     const visible = data.filter(h => h.count > 0);
+    const overdueBtn = document.getElementById('inv-overdue-btn');
+    if (overdueBtn) overdueBtn.style.display = data.some(h => h.overdue > 0) ? '' : 'none';
     if (!visible.length) {
       invMonthTabs.innerHTML    = '';
       invMonthContent.innerHTML = '';
@@ -3508,7 +3601,7 @@ async function loadInvoicesMainView() {
     const activePeriod = (lastActiveInvPeriod && visible.some(h => h.period === lastActiveInvPeriod))
                          ? lastActiveInvPeriod : newestPeriod;
     invMonthTabs.innerHTML = visible.map(h => {
-      const staleBadge = h.stale   ? `<span class="badge ms-1" style="background:#f97316;color:#fff;font-size:.6rem">&#9888; ${h.stale}</span>` : '';
+      const staleBadge = h.stale   ? `<span class="badge inv-stale-badge ms-1" style="background:#f97316;color:#fff;font-size:.6rem">&#9888; ${h.stale}</span>` : '';
       const badge      = h.draft   ? `<span class="badge bg-secondary ms-1" style="font-size:.6rem">${h.draft}d</span>`    : '';
       const sbadge     = h.sent    ? `<span class="badge bg-primary ms-1"   style="font-size:.6rem">${h.sent}s</span>`     : '';
       const pbadge     = h.paid    ? `<span class="badge bg-success ms-1"   style="font-size:.6rem">${h.paid}p</span>`     : '';
@@ -3546,6 +3639,21 @@ async function loadInvPeriod(period) {
     const res  = await fetch(`/invoices/${period}`);
     const invs = await res.json();
     renderInvList(container, period, invs);
+    // Review badge on month tab button
+    const reviewCount = invs.filter(i => i.review_flagged).length;
+    const tabBtn = invMonthTabs.querySelector(`button[data-period="${period}"]`);
+    if (tabBtn) {
+      let rb = tabBtn.querySelector('.inv-review-badge');
+      if (reviewCount) {
+        if (!rb) { rb = document.createElement('span'); rb.className = 'badge inv-review-badge ms-1'; rb.style.cssText = 'background:#eab308;color:#fff;font-size:.6rem'; }
+        rb.textContent = `⚠ ${reviewCount}`;
+        const staleEl = tabBtn.querySelector('.inv-stale-badge');
+        const firstBadge = tabBtn.querySelector('.badge');
+        if (staleEl) staleEl.after(rb);
+        else if (firstBadge) firstBadge.before(rb);
+        else tabBtn.appendChild(rb);
+      } else if (rb) { rb.remove(); }
+    }
   } catch(e) {
     container.innerHTML = '<p class="text-muted small">Could not load invoices.</p>';
   }
@@ -3569,10 +3677,19 @@ function renderInvList(container, period, invs) {
   // Revenue summary badges (left side of header)
   const sm = invSummaryByPeriod[period] || {};
   let badgesHtml = '';
-  if (sm.labor_total)     badgesHtml += `<span class="badge bg-success px-3 py-2" style="font-size:.72rem">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
-  if (sm.tools_total)     badgesHtml += `<span class="badge bg-primary px-3 py-2" style="font-size:.72rem">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
-  if (sm.materials_total) badgesHtml += `<span class="badge px-3 py-2" style="background:#7c4d1a;font-size:.72rem">$${sm.materials_total.toFixed(2)} Customer Materials</span>`;
-  if (sm.personal_total)  badgesHtml += `<span class="badge px-3 py-2" style="background:#f472b6;color:#fff;font-size:.72rem">$${sm.personal_total.toFixed(2)} Personal</span>`;
+  if (sm.labor_total)     badgesHtml += `<span class="badge px-3 py-2" style="font-size:.72rem;border:1.5px solid #198754;color:#198754;background:transparent">$${sm.labor_total.toFixed(2)} Labor Revenue</span>`;
+  if (sm.tools_total)     badgesHtml += `<span class="badge px-3 py-2" style="font-size:.72rem;border:1.5px solid #0d6efd;color:#0d6efd;background:transparent">$${sm.tools_total.toFixed(2)} Tools / Materials</span>`;
+  if (sm.materials_total) badgesHtml += `<span class="badge px-3 py-2" style="font-size:.72rem;border:1.5px solid #7c4d1a;color:#7c4d1a;background:transparent">$${sm.materials_total.toFixed(2)} Customer Materials</span>`;
+  if (sm.personal_total)  badgesHtml += `<span class="badge px-3 py-2" style="font-size:.72rem;border:1.5px solid #db2777;color:#db2777;background:transparent">$${sm.personal_total.toFixed(2)} Personal</span>`;
+
+  // Show Changed / Review filter pills only when matching invoices exist
+  const _fg = document.getElementById('inv-filter-group');
+  if (_fg) {
+    const _cp = _fg.querySelector('[data-filter="changed"]');
+    const _rp = _fg.querySelector('[data-filter="review"]');
+    if (_cp) _cp.style.display = invs.some(i => i.stale) ? '' : 'none';
+    if (_rp) _rp.style.display = invs.some(i => i.review_flagged) ? '' : 'none';
+  }
 
   // Filter
   const filtered = invs.filter(inv => {
@@ -3611,7 +3728,7 @@ function renderInvList(container, period, invs) {
       </div>
     </div>
     <div class="mb-3">
-      <input type="search" class="form-control form-control-sm inv-search-input" placeholder="Search customer…" style="max-width:260px" value="${escHtml(_invSearchState[period]||'')}">
+      <input type="text" autocomplete="off" class="form-control form-control-sm inv-search-input" placeholder="Search customer…" style="max-width:260px" value="${escHtml(_invSearchState[period]||'')}">
     </div>`;
 
   if (!filtered.length) {
@@ -3665,6 +3782,7 @@ function renderInvList(container, period, invs) {
         <td class="small text-muted" style="white-space:nowrap">${inv.sent_at ? fmtInvDate(inv.sent_at) : '—'}</td>
         <td class="small text-muted" style="white-space:nowrap">${inv.due_date && statusKey !== 'draft' ? fmtInvDate(inv.due_date) : '—'}</td>
         <td class="small text-muted" style="white-space:nowrap">${inv.paid_at ? fmtInvDate(inv.paid_at) : '—'}</td>
+        <td class="small text-muted" style="white-space:nowrap">${inv.reminded_at ? `<span style="color:#f97316;font-weight:600">${fmtInvDate(inv.reminded_at)}</span>` : '—'}</td>
         <td>${flagCell}</td>
       </tr>`;
     }).join('');
@@ -3681,6 +3799,7 @@ function renderInvList(container, period, invs) {
             <th>Sent Date</th>
             <th>Due Date</th>
             <th>Paid</th>
+            <th>Reminded</th>
             <th>Flags</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -3760,6 +3879,7 @@ function renderInvList(container, period, invs) {
             ${inv.due_date && statusKey !== 'draft' ? `<div><span class="badge bg-dark me-1" style="font-size:.55rem;vertical-align:middle">Due</span>${fmtInvDate(inv.due_date)}</div>` : ''}
             ${inv.paid_at ? `<div><span class="badge bg-success me-1" style="font-size:.55rem;vertical-align:middle">Paid</span>${fmtInvDate(inv.paid_at)}</div>` : ''}
             ${overdue ? `<div><span class="badge bg-danger me-1" style="font-size:.55rem;vertical-align:middle">Overdue</span>${daysOver}d past due</div>` : ''}
+            ${inv.reminded_at ? `<div><span class="badge me-1" style="background:#f97316;font-size:.55rem;vertical-align:middle">Reminded</span>${fmtInvDate(inv.reminded_at)}</div>` : ''}
           </div>
           <div id="${historyId}" style="display:none"></div>
         </div>
@@ -3789,6 +3909,110 @@ function renderInvList(container, period, invs) {
   html += '</div>';
   container.innerHTML = html;
   _applyInvSearch(container, _invSearchState[period] || '');
+}
+
+let _overdueList = [];
+
+async function openOverdueModal() {
+  const modalEl = document.getElementById('overdueReminderModal');
+  const modal   = bootstrap.Modal.getOrCreateInstance(modalEl);
+  const body    = document.getElementById('overdueModalBody');
+  const statusEl = document.getElementById('overdueModalStatus');
+  body.innerHTML  = '<p class="text-muted">Loading overdue invoices…</p>';
+  statusEl.innerHTML = '';
+  modal.show();
+  try {
+    const res = await fetch('/invoices/overdue-all');
+    _overdueList = await res.json();
+  } catch(e) {
+    body.innerHTML = '<p class="text-danger">Failed to load overdue invoices.</p>';
+    return;
+  }
+  if (!_overdueList.length) {
+    body.innerHTML = '<p class="text-muted py-3 text-center">No overdue invoices found.</p>';
+    return;
+  }
+  // Group by period
+  const byPeriod = {};
+  _overdueList.forEach(inv => {
+    if (!byPeriod[inv.period]) byPeriod[inv.period] = [];
+    byPeriod[inv.period].push(inv);
+  });
+  let html = '';
+  Object.entries(byPeriod).sort(([a],[b]) => b.localeCompare(a)).forEach(([period, invs]) => {
+    const label = invs[0].month_label || formatPeriodLabel(period);
+    html += `<div class="mb-3"><h6 class="fw-semibold text-secondary mb-2 border-bottom pb-1">${escHtml(label)}</h6>`;
+    invs.forEach(inv => {
+      const isReview = inv.review_flagged;
+      const noEmail  = !inv.bill_to_email;
+      const disabled = isReview || noEmail ? 'disabled' : '';
+      const checked  = !isReview && !noEmail ? 'checked' : '';
+      const dimStyle = isReview || noEmail ? 'opacity:.5' : '';
+      const remindedBadge = inv.reminded_at
+        ? ` <span class="badge" style="background:#f97316;font-size:.6rem">Reminded ${fmtInvDate(inv.reminded_at)}</span>` : '';
+      const reasonNote = isReview ? ' <span class="text-warning small">(review flagged — skipped)</span>'
+                        : noEmail ? ' <span class="text-danger small">(no email on file)</span>' : '';
+      html += `
+        <div class="form-check d-flex align-items-center gap-2 py-1 border-bottom" style="${dimStyle}">
+          <input class="form-check-input overdue-chk mt-0" type="checkbox" ${checked} ${disabled}
+                 id="odc-${escHtml(inv.invoice_id)}"
+                 data-period="${escHtml(inv.period)}" data-id="${escHtml(inv.invoice_id)}">
+          <label class="form-check-label d-flex align-items-center gap-3 w-100" for="odc-${escHtml(inv.invoice_id)}" style="cursor:pointer">
+            <span class="fw-semibold" style="min-width:160px">${escHtml(inv.bill_to_name)}</span>
+            <span class="text-success fw-semibold" style="min-width:70px">$${inv.total.toFixed(2)}</span>
+            <span class="badge bg-danger" style="font-size:.6rem">${inv.days_overdue}d overdue</span>
+            ${remindedBadge}${reasonNote}
+          </label>
+        </div>`;
+    });
+    html += '</div>';
+  });
+  const eligible = _overdueList.filter(i => !i.review_flagged && i.bill_to_email).length;
+  const selBar = `<div class="d-flex gap-2 align-items-center mb-3 pb-2 border-bottom">
+    <button class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.overdue-chk:not(:disabled)').forEach(c=>c.checked=true)">Select All</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="document.querySelectorAll('.overdue-chk:not(:disabled)').forEach(c=>c.checked=false)">Deselect All</button>
+    <span class="text-muted small">${eligible} eligible invoice${eligible !== 1 ? 's' : ''}</span>
+  </div>`;
+  body.innerHTML = selBar + html;
+}
+
+async function sendOverdueReminders() {
+  const checked = [...document.querySelectorAll('.overdue-chk:checked')];
+  if (!checked.length) {
+    document.getElementById('overdueModalStatus').textContent = 'No invoices selected.';
+    return;
+  }
+  if (!confirm(`Send overdue reminder to ${checked.length} invoice${checked.length !== 1 ? 's' : ''}?`)) return;
+  const btn = document.getElementById('overdueSendBtn');
+  btn.disabled    = true;
+  btn.textContent = 'Sending…';
+  const targets = checked.map(el => ({ period: el.dataset.period, invoice_id: el.dataset.id }));
+  try {
+    const res  = await fetch('/invoices/send-overdue-reminders', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ invoices: targets }),
+    });
+    const data = await res.json();
+    const ok   = (data.results || []).filter(r => r.ok);
+    const fail = (data.results || []).filter(r => !r.ok);
+    if (ok.length) {
+      const sentPeriods = [...new Set(targets.filter(t => ok.some(r => r.invoice_id === t.invoice_id)).map(t => t.period))];
+      sentPeriods.forEach(p => { if (p === lastActiveInvPeriod) loadInvPeriod(p); });
+    }
+    if (!fail.length && ok.length) {
+      setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('overdueReminderModal'))?.hide(), 1200);
+    } else {
+      document.getElementById('overdueModalStatus').innerHTML =
+        `<span class="text-success">&#10003; ${ok.length} sent</span>` +
+        (fail.length ? ` <span class="text-danger ms-2">&#10007; ${fail.length} failed: ${fail.map(r => escHtml(r.invoice_id) + ' (' + escHtml(r.error) + ')').join(', ')}</span>` : '');
+    }
+  } catch(e) {
+    document.getElementById('overdueModalStatus').textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled    = false;
+    btn.innerHTML   = '&#9993; Send to Selected';
+  }
 }
 
 async function setInvStatus(period, invoiceId, newStatus, currentStatus) {
@@ -4957,6 +5181,9 @@ document.getElementById('msg-send-btn').addEventListener('click', async () => {
     if (e.target.closest('.stale-badge')) hide();
   }, true);
 })();
+
+// Populate vendor datalist on startup
+fetch('/vendors').then(r => r.json()).then(populateVendorDatalist).catch(() => {});
 </script>
 </body>
 </html>

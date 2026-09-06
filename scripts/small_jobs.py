@@ -1245,8 +1245,13 @@ _BROWSER_PATHS = [
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",  # prefer Edge — unaffected by running Chrome
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    # macOS
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "/usr/bin/google-chrome",
 ]
-_BROWSER_PROFILE = Path(os.environ.get("TEMP", "C:/Temp")) / "small-jobs-headless-profile"
+import tempfile as _tempfile
+_BROWSER_PROFILE = Path(_tempfile.gettempdir()) / "small-jobs-headless-profile"
 
 def _find_browser():
     for p in _BROWSER_PATHS:
@@ -1398,24 +1403,27 @@ def _compute_live_invoice_data(period, customer_key, db):
 
 # ── Invoice routes ────────────────────────────────────────────────────────────
 
+def _is_overdue(inv, today=None, net_days_default=20):
+    if inv.get("status") != "sent":
+        return False
+    if today is None:
+        today = datetime.date.today()
+    due = inv.get("due_date")
+    if due:
+        return datetime.date.fromisoformat(due) < today
+    sent = inv.get("sent_at")
+    if not sent:
+        return False
+    net     = inv.get("net_days", net_days_default)
+    sent_dt = datetime.datetime.fromisoformat(sent).date()
+    return (today - sent_dt).days > net
+
+
 @app.route("/invoices")
 def api_invoices_list():
     meta             = _invoice_meta()
     net_days_default = meta.get("net_days", 20)
     today            = datetime.date.today()
-
-    def _is_overdue(inv):
-        if inv.get("status") != "sent":
-            return False
-        due = inv.get("due_date")
-        if due:
-            return datetime.date.fromisoformat(due) < today
-        sent = inv.get("sent_at")
-        if not sent:
-            return False
-        net      = inv.get("net_days", net_days_default)
-        sent_dt  = datetime.datetime.fromisoformat(sent).date()
-        return (today - sent_dt).days > net
 
     db = _load_customers()
     non_billable_keys = {ck for ck, c in db.items()
@@ -1888,6 +1896,124 @@ def email_invoice(period, invoice_id):
     return jsonify({"ok": True, "sent_to": recipient, "invoice": inv})
 
 
+@app.route("/invoices/overdue-all")
+def api_overdue_all():
+    meta             = _invoice_meta()
+    net_days_default = meta.get("net_days", 20)
+    today            = datetime.date.today()
+    db               = _load_customers()
+    out = []
+    for fp in sorted(INVOICES.glob("invoices_*.json"), reverse=True):
+        period = fp.stem.replace("invoices_", "")
+        try:
+            invs = json.loads(fp.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        for inv in invs:
+            if inv.get("superseded"):
+                continue
+            if not _is_overdue(inv, today=today, net_days_default=net_days_default):
+                continue
+            cust = db.get(inv.get("customer_key", ""), {})
+            due  = inv.get("due_date")
+            sent = inv.get("sent_at", "")
+            if due:
+                days_overdue = (today - datetime.date.fromisoformat(due)).days
+            elif sent:
+                net      = inv.get("net_days", net_days_default)
+                sent_dt  = datetime.datetime.fromisoformat(sent).date()
+                days_overdue = (today - sent_dt).days - net
+            else:
+                days_overdue = 0
+            out.append({
+                "period":        period,
+                "invoice_id":    inv["invoice_id"],
+                "bill_to_name":  inv.get("bill_to_name", ""),
+                "total":         inv.get("total", 0),
+                "sent_at":       sent,
+                "due_date":      inv.get("due_date", ""),
+                "days_overdue":  max(0, days_overdue),
+                "review_flagged": bool(inv.get("review_flagged")),
+                "reminded_at":   inv.get("reminded_at", ""),
+                "bill_to_email": inv.get("bill_to_email") or cust.get("email", ""),
+                "month_label":   inv.get("month_label", period),
+            })
+    out.sort(key=lambda x: x["days_overdue"], reverse=True)
+    return jsonify(out)
+
+
+@app.route("/invoices/send-overdue-reminders", methods=["POST"])
+def send_overdue_reminders():
+    if not SMTP_USER or not SMTP_PASS:
+        return jsonify({"error": "Email not configured"}), 503
+    body    = request.get_json() or {}
+    targets = body.get("invoices", [])
+    results = []
+    for t in targets:
+        period     = t.get("period")
+        invoice_id = t.get("invoice_id")
+        invs = _load_invoices(period)
+        inv  = next((i for i in invs if i["invoice_id"] == invoice_id), None)
+        if not inv:
+            results.append({"invoice_id": invoice_id, "ok": False, "error": "not found"})
+            continue
+        if inv.get("review_flagged"):
+            results.append({"invoice_id": invoice_id, "ok": False, "error": "review flagged"})
+            continue
+        recipient = inv.get("bill_to_email", "").strip()
+        if not recipient:
+            try:
+                db   = _load_customers()
+                cust = db.get(inv.get("customer_key", ""), {})
+                recipient = cust.get("email", "").strip()
+                if recipient:
+                    inv["bill_to_email"] = recipient
+            except Exception:
+                pass
+        if not recipient:
+            results.append({"invoice_id": invoice_id, "ok": False, "error": "no email"})
+            continue
+        if not inv.get("month_label"):
+            try:
+                y, m = int(period.split("_")[0]), int(period.split("_")[1])
+                inv["month_label"] = datetime.datetime(y, m, 1).strftime("%B %Y")
+            except Exception:
+                inv["month_label"] = period
+        if not inv.get("property_label"):
+            try:
+                db   = _load_customers()
+                cust = db.get(inv.get("customer_key", ""), {})
+                inv["property_label"] = cust.get("property_label", "")
+            except Exception:
+                pass
+        html_body = render_template("invoice_email.html", inv=inv)
+        subject   = f"Overdue – Invoice {invoice_id} – {inv.get('month_label', period)} – Small Jobs"
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = EMAIL_FROM
+        msg["To"]      = recipient
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        try:
+            ctx = ssl.create_default_context()
+            if SMTP_PORT == 465:
+                with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx) as server:
+                    server.login(SMTP_USER, SMTP_PASS)
+                    server.sendmail(EMAIL_FROM, recipient, msg.as_string())
+            else:
+                with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+                    server.ehlo()
+                    server.starttls(context=ctx)
+                    server.login(SMTP_USER, SMTP_PASS)
+                    server.sendmail(EMAIL_FROM, recipient, msg.as_string())
+            now = datetime.datetime.now().isoformat(timespec="seconds")
+            inv["reminded_at"] = now
+            _save_invoices(period, invs)
+            results.append({"invoice_id": invoice_id, "ok": True, "sent_to": recipient, "reminded_at": now})
+        except Exception as e:
+            results.append({"invoice_id": invoice_id, "ok": False, "error": str(e)})
+    return jsonify({"results": results})
+
+
 @app.route("/send_message", methods=["POST"])
 def send_message():
     if not SMTP_USER or not SMTP_PASS:
@@ -1974,6 +2100,33 @@ def update_receipt_item(period, receipt_id, item_index):
     affected_keys = {i.get("customer_key","") for i in items if i.get("customer_key","")}
     _mark_invoices_stale(period, affected_keys)
     return jsonify({"ok": True})
+
+
+@app.route("/receipts/<period>/<receipt_id>/upload-image", methods=["POST"])
+def upload_receipt_image(period, receipt_id):
+    """Attach an image file to an existing receipt that has none."""
+    fp = EXPENSES / f"expenses_{period}.json"
+    if not fp.exists():
+        return jsonify({"error": "not found"}), 404
+    records = json.loads(fp.read_text(encoding="utf-8-sig"))
+    rec = next((r for r in records if r.get("id") == receipt_id), None)
+    if not rec:
+        return jsonify({"error": "not found"}), 404
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "no file"}), 400
+    ext = Path(f.filename).suffix.lower()
+    if ext not in ('.jpg', '.jpeg', '.png', '.pdf', '.heic', '.webp'):
+        return jsonify({"error": "unsupported file type"}), 400
+    uid      = uuid.uuid4().hex[:10]
+    filename = secure_filename(uid + ext)
+    dest     = UPLOADS / filename
+    f.save(str(dest))
+    rec["receipt_file"] = filename
+    tmp = fp.with_suffix(".tmp")
+    tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(fp))
+    return jsonify({"ok": True, "filename": filename})
 
 
 @app.route("/hours/<period>/entries", methods=["POST"])

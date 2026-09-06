@@ -339,7 +339,7 @@ function openMaterialEditModal(row) {
     _field('ef-date','Date', d.date, 'date') +
     _field('ef-vendor','Vendor', d.vendor) +
     _field('ef-desc','Description', d.desc) +
-    _field('ef-amount','Amount ($)', d.amount, 'number', 'step="0.01"');
+    _field('ef-amount','Total Amount ($) (incl. sales tax)', d.amount, 'number', 'step="0.01"');
   openEditModal();
 }
 
@@ -376,7 +376,7 @@ function showAddReceiptForm() {
     _field('ef-date','Date', '', 'date') +
     _field('ef-vendor','Vendor', '') +
     _field('ef-desc','Description', '') +
-    _field('ef-amount','Amount ($)', '', 'number', 'step="0.01"');
+    _field('ef-amount','Total Amount ($) (incl. sales tax)', '', 'number', 'step="0.01"');
 }
 
 async function saveEdit() {
@@ -458,12 +458,12 @@ async function saveEdit() {
   }
 }
 
-// Wire up editable row clicks
-document.querySelectorAll('tr.editable-row').forEach(row => {
-  row.addEventListener('click', () => {
-    if (row.dataset.type === 'labor')    openLaborEditModal(row);
-    if (row.dataset.type === 'material') openMaterialEditModal(row);
-  });
+// Wire up editable row clicks (delegated — rows render after this script block)
+document.addEventListener('click', e => {
+  const row = e.target.closest('tr.editable-row');
+  if (!row) return;
+  if (row.dataset.type === 'labor')    openLaborEditModal(row);
+  if (row.dataset.type === 'material') openMaterialEditModal(row);
 });
 
 
