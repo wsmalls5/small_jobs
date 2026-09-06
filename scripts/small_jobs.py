@@ -1531,7 +1531,7 @@ def generate_invoices(period):
         for receipt in json.loads(ep.read_text(encoding="utf-8-sig")):
             assigned_keys = [i.get("customer_key","") for i in receipt.get("items",[]) if i.get("customer_key","")]
             is_split      = len(set(assigned_keys)) > 1
-            for item in receipt.get("items", []):
+            for item_idx, item in enumerate(receipt.get("items", [])):
                 ck = item.get("customer_key", "")
                 if not ck:
                     continue
@@ -1542,6 +1542,8 @@ def generate_invoices(period):
                     "description":  item.get("description", ""),
                     "amount":       float(item.get("amount", 0)),
                     "is_split":     is_split,
+                    "receipt_id":   receipt.get("id", ""),
+                    "item_index":   item_idx,
                 })
 
     # Group labor and materials by customer
@@ -1582,6 +1584,7 @@ def generate_invoices(period):
                 "hours":       float(e.get("hours", 0)),
                 "rate":        rate,
                 "amount":      round(float(e.get("hours", 0)) * rate, 2),
+                "entry_id":    e.get("entry_id", ""),
             }
             for e in bucket["labor"]
         ], key=lambda x: x["date"])
@@ -1604,6 +1607,8 @@ def generate_invoices(period):
                 "vendor":      m["vendor"],
                 "description": _mat_desc(m),
                 "amount":      m["amount"],
+                "receipt_id":  m.get("receipt_id", ""),
+                "item_index":  m.get("item_index", 0),
             }
             for m in bucket["materials"]
         ], key=lambda x: x["date"])
@@ -1938,6 +1943,108 @@ def delete_invoice(period, invoice_id):
         return jsonify({"error": "only draft invoices can be deleted"}), 400
     _save_invoices(period, [i for i in invs if i["invoice_id"] != invoice_id])
     return jsonify({"ok": True})
+
+
+@app.route("/receipts/<period>/<receipt_id>/items/<int:item_index>", methods=["PUT"])
+def update_receipt_item(period, receipt_id, item_index):
+    """Update a single item within a receipt (description, amount) and optionally the receipt-level date/vendor."""
+    fp = EXPENSES / f"expenses_{period}.json"
+    if not fp.exists():
+        return jsonify({"error": "not found"}), 404
+    records = json.loads(fp.read_text(encoding="utf-8-sig"))
+    rec = next((r for r in records if r.get("id") == receipt_id), None)
+    if not rec:
+        return jsonify({"error": "not found"}), 404
+    items = rec.get("items", [])
+    if item_index >= len(items):
+        return jsonify({"error": "item index out of range"}), 400
+    body = request.get_json() or {}
+    if "description" in body:
+        items[item_index]["description"] = body["description"]
+    if "amount" in body:
+        items[item_index]["amount"] = float(body["amount"])
+    if "receipt_date" in body:
+        rec["receipt_date"] = body["receipt_date"]
+    if "vendor" in body:
+        rec["vendor"] = body["vendor"]
+    rec["receipt_total"] = round(sum(float(i.get("amount", 0)) for i in items), 2)
+    tmp = fp.with_suffix(".tmp")
+    tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(fp))
+    affected_keys = {i.get("customer_key","") for i in items if i.get("customer_key","")}
+    _mark_invoices_stale(period, affected_keys)
+    return jsonify({"ok": True})
+
+
+@app.route("/hours/<period>/entries", methods=["POST"])
+def add_hours_entry(period):
+    """Add a new individual hours entry to a period."""
+    import uuid as _uuid
+    body = request.get_json() or {}
+    customer_key = body.get("customer_key", "")
+    if not customer_key:
+        return jsonify({"error": "customer_key required"}), 400
+    fp = HOURS / f"hours_{period}.json"
+    if fp.exists():
+        record = json.loads(fp.read_text(encoding="utf-8-sig"))
+    else:
+        record = {"period": period, "total_hours": 0, "entries": []}
+    db    = _load_customers()
+    cust  = db.get(customer_key, {})
+    entry = {
+        "entry_id":      str(_uuid.uuid4()),
+        "date":          body.get("date", ""),
+        "hours":         float(body.get("hours", 0)),
+        "memo":          body.get("memo", ""),
+        "customer_key":  customer_key,
+        "property_label": cust.get("property_label", ""),
+        "job_raw":       cust.get("property_label", customer_key),
+        "in_time":       "",
+        "out_time":      "",
+    }
+    record["entries"].append(entry)
+    record["total_hours"] = round(sum(float(e.get("hours", 0)) for e in record["entries"]), 2)
+    tmp = fp.with_suffix(".tmp")
+    tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(fp))
+    _mark_invoices_stale(period, {customer_key})
+    return jsonify({"ok": True, "entry_id": entry["entry_id"]})
+
+
+@app.route("/receipts/<period>/quick", methods=["POST"])
+def add_quick_receipt(period):
+    """Create a minimal single-item receipt from the invoice preview edit flow."""
+    import uuid as _uuid
+    body = request.get_json() or {}
+    customer_key = body.get("customer_key", "")
+    if not customer_key:
+        return jsonify({"error": "customer_key required"}), 400
+    db   = _load_customers()
+    cust = db.get(customer_key, {})
+    receipt_date = body.get("receipt_date", "")
+    item = {
+        "description":   body.get("description", ""),
+        "amount":        float(body.get("amount", 0)),
+        "customer_key":  customer_key,
+        "property_label": cust.get("property_label", ""),
+    }
+    receipt = {
+        "id":           str(_uuid.uuid4()),
+        "vendor":       body.get("vendor", ""),
+        "receipt_date": receipt_date,
+        "items":        [item],
+        "receipt_total": item["amount"],
+        "pending_review": False,
+        "single_job":   False,
+    }
+    fp = EXPENSES / f"expenses_{period}.json"
+    records = json.loads(fp.read_text(encoding="utf-8-sig")) if fp.exists() else []
+    records.append(receipt)
+    tmp = fp.with_suffix(".tmp")
+    tmp.write_text(json.dumps(records, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(fp))
+    _mark_invoices_stale(period, {customer_key})
+    return jsonify({"ok": True, "receipt_id": receipt["id"]})
 
 
 @app.route("/invoices/<period>/<invoice_id>/print")
