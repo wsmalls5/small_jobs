@@ -584,6 +584,7 @@
           <button type="button" class="btn btn-outline-secondary" data-filter="draft">Draft</button>
           <button type="button" class="btn btn-outline-primary"  data-filter="sent">Sent</button>
           <button type="button" class="btn btn-outline-success"  data-filter="paid">Paid</button>
+          <button type="button" class="btn btn-outline-warning"  data-filter="review" style="color:#eab308;border-color:#eab308">Review</button>
           <button type="button" class="btn btn-outline-warning"  data-filter="changed" style="color:#f97316;border-color:#f97316">Changed</button>
           <button type="button" class="btn btn-outline-danger"   data-filter="overdue">Overdue</button>
         </div>
@@ -3578,6 +3579,7 @@ function renderInvList(container, period, invs) {
     if (invFilter === 'all')     return true;
     if (invFilter === 'overdue') return invIsOverdue(inv);
     if (invFilter === 'changed') return !!inv.stale;
+    if (invFilter === 'review')  return !!inv.review_flagged;
     return (inv.status || 'draft') === invFilter;
   });
 
@@ -3655,6 +3657,11 @@ function renderInvList(container, period, invs) {
         <td class="small text-muted">${escHtml(inv.property_label || '')}</td>
         <td class="small fw-bold text-success" style="white-space:nowrap">$${inv.total.toFixed(2)}</td>
         <td><div class="btn-group btn-group-sm">${statusBtns}</div></td>
+        <td style="text-align:center">
+          <button class="btn btn-sm review-toggle-btn" title="${inv.review_flagged ? 'Clear review flag' : 'Flag for review'}"
+            onclick="toggleInvReview('${escHtml(period)}','${escHtml(inv.invoice_id)}',this)"
+            style="padding:.1rem .4rem;${inv.review_flagged ? 'background:#eab308;border-color:#eab308;color:#fff' : 'background:transparent;border:1.5px solid #eab308;color:#eab308'}">&#9888;</button>
+        </td>
         <td class="small text-muted" style="white-space:nowrap">${inv.sent_at ? fmtInvDate(inv.sent_at) : '—'}</td>
         <td class="small text-muted" style="white-space:nowrap">${inv.due_date && statusKey !== 'draft' ? fmtInvDate(inv.due_date) : '—'}</td>
         <td class="small text-muted" style="white-space:nowrap">${inv.paid_at ? fmtInvDate(inv.paid_at) : '—'}</td>
@@ -3670,6 +3677,7 @@ function renderInvList(container, period, invs) {
             <th>Property</th>
             <th>Amount</th>
             <th style="min-width:180px">Status</th>
+            <th style="text-align:center">Review</th>
             <th>Sent Date</th>
             <th>Due Date</th>
             <th>Paid</th>
@@ -3757,12 +3765,7 @@ function renderInvList(container, period, invs) {
         </div>
         <div class="card-footer bg-transparent py-1 inv-card-footer">
           <div class="d-flex gap-1 justify-content-between align-items-center flex-wrap">
-            <div class="d-flex align-items-center gap-1">
-              <div class="btn-group btn-group-sm inv-status-group">${statusBtns}</div>
-              <button class="btn btn-sm review-toggle-btn" title="${inv.review_flagged ? 'Clear review flag' : 'Flag for review'}"
-                onclick="toggleInvReview('${escHtml(period)}','${escHtml(inv.invoice_id)}',this)"
-                style="${inv.review_flagged ? 'background:#eab308;border-color:#eab308;color:#fff' : 'background:transparent;border:1.5px solid #eab308;color:#eab308'}">&#9888;</button>
-            </div>
+            <div class="btn-group btn-group-sm inv-status-group">${statusBtns}</div>
             <div class="d-flex gap-1">
               <a href="/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print" target="_blank"
                  class="btn btn-sm btn-dark">&#128438; Preview</a>
@@ -3772,6 +3775,9 @@ function renderInvList(container, period, invs) {
                      title="Email invoice to ${escHtml(emailAddr)}">&#9993; Email</button>`
                 : `<button class="btn btn-sm btn-primary" disabled title="${inv.review_flagged ? 'Clear review flag before sending' : 'No email on file'}">&#9993; Email</button>`}
               ${regenBtn}
+              <button class="btn btn-sm review-toggle-btn" title="${inv.review_flagged ? 'Clear review flag' : 'Flag for review'}"
+                onclick="toggleInvReview('${escHtml(period)}','${escHtml(inv.invoice_id)}',this)"
+                style="${inv.review_flagged ? 'background:#eab308;border-color:#eab308;color:#fff' : 'background:transparent;border:1.5px solid #eab308;color:#eab308'}">&#9888;</button>
               ${deleteBtn}
             </div>
           </div>
@@ -4177,6 +4183,7 @@ const INV_FILTER_CLS = {
   sent:    { on: 'btn btn-primary',              off: 'btn btn-outline-primary',    onStyle: '',                                              offStyle: '' },
   overdue: { on: 'btn btn-danger',               off: 'btn btn-outline-danger',     onStyle: '',                                              offStyle: '' },
   paid:    { on: 'btn btn-success',              off: 'btn btn-outline-success',    onStyle: '',                                              offStyle: '' },
+  review:  { on: 'btn',                          off: 'btn btn-outline-warning',    onStyle: 'background:#eab308;border-color:#eab308;color:#fff', offStyle: 'color:#eab308;border-color:#eab308' },
   changed: { on: 'btn',                          off: 'btn btn-outline-warning',    onStyle: 'background:#f97316;border-color:#f97316;color:#fff', offStyle: 'color:#f97316;border-color:#f97316' },
 };
 document.getElementById('inv-filter-group').addEventListener('click', e => {
