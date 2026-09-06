@@ -1815,6 +1815,8 @@ def email_invoice(period, invoice_id):
     inv  = next((i for i in invs if i["invoice_id"] == invoice_id), None)
     if not inv:
         return jsonify({"error": "Invoice not found"}), 404
+    if inv.get("review_flagged"):
+        return jsonify({"error": "Invoice is flagged for review — clear the review flag before sending."}), 400
     recipient = inv.get("bill_to_email", "").strip()
     if not recipient:
         try:
@@ -1911,6 +1913,19 @@ def send_message():
     except Exception as e:
         return jsonify({"error": f"SMTP error: {str(e)}"}), 500
     return jsonify({"ok": True})
+
+
+@app.route("/invoices/<period>/<invoice_id>/review", methods=["PUT"])
+def toggle_invoice_review(period, invoice_id):
+    """Toggle the review_flagged field on an invoice (blocks emailing until cleared)."""
+    body = request.get_json() or {}
+    invs = _load_invoices(period)
+    inv  = next((i for i in invs if i["invoice_id"] == invoice_id), None)
+    if not inv:
+        return jsonify({"error": "not found"}), 404
+    inv["review_flagged"] = bool(body.get("review_flagged", not inv.get("review_flagged", False)))
+    _save_invoices(period, invs)
+    return jsonify({"ok": True, "review_flagged": inv["review_flagged"]})
 
 
 @app.route("/invoices/<period>/<invoice_id>", methods=["DELETE"])

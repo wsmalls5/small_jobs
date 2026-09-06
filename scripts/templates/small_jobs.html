@@ -584,6 +584,7 @@
           <button type="button" class="btn btn-outline-secondary" data-filter="draft">Draft</button>
           <button type="button" class="btn btn-outline-primary"  data-filter="sent">Sent</button>
           <button type="button" class="btn btn-outline-success"  data-filter="paid">Paid</button>
+          <button type="button" class="btn btn-outline-warning"  data-filter="changed" style="color:#f97316;border-color:#f97316">Changed</button>
           <button type="button" class="btn btn-outline-danger"   data-filter="overdue">Overdue</button>
         </div>
         <button class="btn btn-sm btn-primary" id="inv-solo-btn">&#9889; Generate Single Invoice &#9889;</button>
@@ -1810,7 +1811,8 @@ function _rcptByDateRow(r, period) {
     : '—';
   const rowStyle = r.pending_review ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
   const rowClass = (!r.pending_review && r.id === _lastImportedId) ? 'rcpt-row-new' : '';
-  return `<tr class="${rowClass}" style="${rowStyle}" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}">
+  const _rcptSearchVal = [r.vendor||'', ...custItems.map(c=>c.nm)].join(' ').toLowerCase();
+  return `<tr class="${rowClass}" style="${rowStyle}" data-period="${escHtml(period)}" data-id="${escHtml(r.id||'')}" data-search="${escHtml(_rcptSearchVal)}">
     <td class="fw-semibold small">${escHtml(r.vendor||'—')}</td>
     <td class="text-muted small" style="padding-right:1rem">${(r.items||[]).length} item${(r.items||[]).length!==1?'s':''}</td>
     <td class="text-primary fw-semibold small">$${(r.receipt_total||0).toFixed(2)}</td>
@@ -1830,9 +1832,10 @@ function renderRcptByDate(container, receipts, period) {
   const grandTotal = receipts.reduce((s, r) => s + (r.receipt_total || 0), 0);
   const uniqueCusts = new Set(receipts.flatMap(r => (r.items||[]).map(i => i.customer_key).filter(Boolean))).size;
   const custText = uniqueCusts ? ` &middot; ${uniqueCusts} Customer${uniqueCusts!==1?'s':''}` : '';
-  let html = `<div class="d-flex justify-content-between align-items-center mb-3 pt-1">
-    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}${custText}</span>
-    <span class="fw-semibold text-primary">$${grandTotal.toFixed(2)} total</span>
+  let html = `<div class="d-flex align-items-center gap-3 mb-3 pt-1">
+    <span class="text-muted small" style="white-space:nowrap">${receipts.length} receipt${receipts.length!==1?'s':''}${custText}</span>
+    <input type="search" class="form-control form-control-sm rcpt-search-input" placeholder="Search vendor or customer…" style="max-width:240px" value="${escHtml(_rcptSearchState[period]||'')}">
+    <span class="fw-semibold text-primary ms-auto" style="white-space:nowrap">$${grandTotal.toFixed(2)} total</span>
   </div>`;
 
   if (pending.length) {
@@ -1911,6 +1914,7 @@ function renderRcptByDate(container, receipts, period) {
   container.innerHTML = html;
   container.querySelectorAll('tr[data-id]').forEach(row =>
     row.addEventListener('click', () => loadReceiptForEdit(row.dataset.period, row.dataset.id)));
+  _applyRcptSearch(container, _rcptSearchState[period] || '');
 }
 
 function renderRcptByJob(container, receipts, period) {
@@ -1948,15 +1952,17 @@ function renderRcptByJob(container, receipts, period) {
   const grandTotal = receipts.reduce((s, r) => s + (r.receipt_total||0), 0);
   const uniqueCustsJ = new Set(receipts.flatMap(r => (r.items||[]).map(i => i.customer_key).filter(Boolean))).size;
   const custTextJ = uniqueCustsJ ? ` &middot; ${uniqueCustsJ} Customer${uniqueCustsJ!==1?'s':''}` : '';
-  let html = `<div class="d-flex justify-content-between align-items-center mb-3 pt-1">
-    <span class="text-muted small">${receipts.length} receipt${receipts.length!==1?'s':''}${custTextJ}</span>
-    <span class="fw-semibold text-primary">$${grandTotal.toFixed(2)} total</span>
+  let html = `<div class="d-flex align-items-center gap-3 mb-3 pt-1">
+    <span class="text-muted small" style="white-space:nowrap">${receipts.length} receipt${receipts.length!==1?'s':''}${custTextJ}</span>
+    <input type="search" class="form-control form-control-sm rcpt-search-input" placeholder="Search vendor or customer…" style="max-width:240px" value="${escHtml(_rcptSearchState[period]||'')}">
+    <span class="fw-semibold text-primary ms-auto" style="white-space:nowrap">$${grandTotal.toFixed(2)} total</span>
   </div>`;
   const makeItemRow = item => {
     const splitBadge = item.is_split ? ' <span class="badge bg-info text-dark" style="font-size:.6rem">Split</span>' : '';
     const rowStyle = item.is_pending ? 'cursor:pointer;background:#fffde7' : 'cursor:pointer';
     const rowClass = (!item.is_pending && item.receipt_id === _lastImportedId) ? 'rcpt-row-new' : '';
-    return `<tr class="${rowClass}" style="${rowStyle}" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}">
+    const _jobSearchVal = [item.vendor||'', item.description||''].join(' ').toLowerCase();
+    return `<tr class="${rowClass}" style="${rowStyle}" data-period="${escHtml(item.period)}" data-id="${escHtml(item.receipt_id)}" data-search="${escHtml(_jobSearchVal)}">
       <td class="text-muted small" style="width:90px;white-space:nowrap;padding-right:.8rem">${escHtml(item.date||'')}</td>
       <td class="text-muted small" style="width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.vendor||'')}</td>
       <td class="small" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(item.description||'')}${splitBadge}</td>
@@ -2012,6 +2018,7 @@ function renderRcptByJob(container, receipts, period) {
   container.innerHTML = html;
   container.querySelectorAll('tr[data-id]').forEach(row =>
     row.addEventListener('click', () => loadReceiptForEdit(row.dataset.period, row.dataset.id)));
+  _applyRcptSearch(container, _rcptSearchState[period] || '');
 }
 
 async function loadReceiptForEdit(period, id) {
@@ -2478,10 +2485,44 @@ let hoursViewMode    = 'job';  // 'job' | 'day'
 let hoursShowDollars = false;
 const hoursDataCache = {};
 let lastActiveHoursPeriod = null;
+const _hoursSearchState  = {};    // period → current search string
+
+function _applyHoursSearch(container, q) {
+  const s = q.trim().toLowerCase();
+  container.querySelectorAll('tr[data-search]').forEach(row => {
+    row.style.display = (!s || row.dataset.search.includes(s)) ? '' : 'none';
+  });
+}
+
+document.getElementById('hoursMonthContent').addEventListener('input', e => {
+  if (!e.target.classList.contains('hours-search-input')) return;
+  const period = lastActiveHoursPeriod;
+  if (!period) return;
+  _hoursSearchState[period] = e.target.value;
+  const container = document.getElementById(`hours-month-detail-${period}`);
+  if (container) _applyHoursSearch(container, e.target.value);
+});
 
 let rcptViewMode         = 'date';  // 'date' | 'job'
 const rcptDataCache      = {};
 let lastActiveRcptPeriod = null;
+const _rcptSearchState   = {};     // period → current search string
+
+function _applyRcptSearch(container, q) {
+  const s = q.trim().toLowerCase();
+  container.querySelectorAll('tr[data-search]').forEach(row => {
+    row.style.display = (!s || row.dataset.search.includes(s)) ? '' : 'none';
+  });
+}
+
+document.getElementById('rcptMonthContent').addEventListener('input', e => {
+  if (!e.target.classList.contains('rcpt-search-input')) return;
+  const period = lastActiveRcptPeriod;
+  if (!period) return;
+  _rcptSearchState[period] = e.target.value;
+  const container = document.getElementById(`rcpt-detail-${period}`);
+  if (container) _applyRcptSearch(container, e.target.value);
+});
 
 function showHoursMainView() {
   document.getElementById('hours-main-view').style.display      = 'block';
@@ -2628,9 +2669,10 @@ function renderByJob(container, entries, period) {
     ? `<div class="fw-semibold text-success" style="font-size:.85rem">$${totalRevenue.toFixed(2)} est. labor</div>`
     : '';
   let html = `
-    <div class="d-flex justify-content-between align-items-center mb-3 pt-1">
-      <span class="text-muted small">${entries.length} entr${entries.length!==1?'ies':'y'}</span>
-      <div class="text-end">
+    <div class="d-flex align-items-center gap-3 mb-3 pt-1">
+      <span class="text-muted small" style="white-space:nowrap">${entries.length} entr${entries.length!==1?'ies':'y'}</span>
+      <input type="search" class="form-control form-control-sm hours-search-input" placeholder="Search customer…" style="max-width:220px" value="${escHtml(_hoursSearchState[period]||'')}">
+      <div class="text-end ms-auto" style="white-space:nowrap">
         <div class="fw-semibold text-primary">${totalHours.toFixed(2)}h total</div>
         ${revenueHeader}
       </div>
@@ -2642,7 +2684,7 @@ function renderByJob(container, entries, period) {
     const hrsClass = mismatch ? 'text-danger fw-bold' : 'text-primary fw-semibold';
     const hrsTip   = mismatch ? ` title="Punch times suggest ${calc.toFixed(2)}h"` : '';
     const entryBg  = e.entry_id === _lastImportedHoursId ? 'background:#f0fdf4;' : '';
-    return `<tr class="hours-entry-row" data-period="${escHtml(p||'')}" data-entry-id="${eid}" title="Click to edit" style="${entryBg}cursor:pointer">
+    return `<tr class="hours-entry-row" data-period="${escHtml(p||'')}" data-entry-id="${eid}" data-search="${escHtml(job.label.toLowerCase())}" title="Click to edit" style="${entryBg}cursor:pointer">
       <td class="text-muted small" style="width:110px;white-space:nowrap">${escHtml(e.date||'')}</td>
       <td class="text-muted small" style="width:120px">${fmtTimeCell(e.in_time, e.out_time)}</td>
       <td class="${hrsClass} small" style="width:65px;white-space:nowrap"${hrsTip}>${(parseFloat(e.hours)||0).toFixed(2)}h</td>
@@ -2737,6 +2779,7 @@ function renderByJob(container, entries, period) {
     });
   }
   container.innerHTML = html;
+  _applyHoursSearch(container, _hoursSearchState[period] || '');
 
   // Inject + New Customer into group-level dropdowns
   container.querySelectorAll('.reassign-sel, .bulk-assign-sel').forEach(sel => {
@@ -2864,9 +2907,10 @@ function renderByDay(container, entries, period) {
   const revSummary   = hoursShowDollars
     ? `<div class="fw-semibold text-success" style="font-size:.85rem">$${totalRevenue.toFixed(2)} est. labor</div>` : '';
   let html = `
-    <div class="d-flex justify-content-between align-items-center mb-3 pt-1">
-      <span class="text-muted small">${sorted.length} entr${sorted.length!==1?'ies':'y'}</span>
-      <div class="text-end">
+    <div class="d-flex align-items-center gap-3 mb-3 pt-1">
+      <span class="text-muted small" style="white-space:nowrap">${sorted.length} entr${sorted.length!==1?'ies':'y'}</span>
+      <input type="search" class="form-control form-control-sm hours-search-input" placeholder="Search customer…" style="max-width:220px" value="${escHtml(_hoursSearchState[period]||'')}">
+      <div class="text-end ms-auto" style="white-space:nowrap">
         <div class="fw-semibold text-primary">${totalHours.toFixed(2)}h total</div>
         ${revSummary}
       </div>
@@ -2891,7 +2935,7 @@ function renderByDay(container, entries, period) {
         ? `<td class="text-muted small" style="width:72px;white-space:nowrap">${rate != null ? `$${rate.toFixed(0)}/hr` : '—'}</td>
            <td class="fw-semibold small" style="width:72px;color:#059669;white-space:nowrap">${revenue != null ? `$${revenue.toFixed(2)}` : '—'}</td>` : '';
       const entryBg = e.entry_id === _lastImportedHoursId ? 'background:#f0fdf4;' : '';
-      return `<tr class="hours-entry-row" data-period="${escHtml(period||'')}" data-entry-id="${eid}" title="Click to edit" style="${entryBg}cursor:pointer">
+      return `<tr class="hours-entry-row" data-period="${escHtml(period||'')}" data-entry-id="${eid}" data-search="${escHtml(custLabel.toLowerCase())}" title="Click to edit" style="${entryBg}cursor:pointer">
         <td class="fw-semibold small">${escHtml(custLabel)}${unassignBadge}</td>
         <td class="text-muted small" style="width:120px">${fmtTimeCell(e.in_time, e.out_time)}</td>
         <td class="${hrsClass} small" style="width:65px;white-space:nowrap"${hrsTip}>${(parseFloat(e.hours)||0).toFixed(2)}h</td>
@@ -2924,6 +2968,7 @@ function renderByDay(container, entries, period) {
       </div>`;
   });
   container.innerHTML = html;
+  _applyHoursSearch(container, _hoursSearchState[period] || '');
 }
 
 function renderHoursTable() {
@@ -3406,9 +3451,17 @@ const invMonthContent = document.getElementById('invMonthContent');
 const invEmptyMsg     = document.getElementById('inv-empty-msg');
 let   lastActiveInvPeriod  = null;
 const invSummaryByPeriod   = {};
-let   invFilter           = 'all';   // 'all' | 'draft' | 'sent' | 'overdue' | 'paid'
+let   invFilter           = 'all';   // 'all' | 'draft' | 'sent' | 'overdue' | 'paid' | 'changed'
 let   invViewMode         = 'cards'; // 'cards' | 'table'
 const invHistoryCache     = {};       // period → full list including superseded
+const _invSearchState     = {};       // period → current search string
+
+function _applyInvSearch(container, q) {
+  const s = q.trim().toLowerCase();
+  container.querySelectorAll('[data-search]').forEach(el => {
+    el.style.display = (!s || el.dataset.search.includes(s)) ? '' : 'none';
+  });
+}
 
 const STATUS_BADGE = {
   draft: '<span class="badge bg-secondary">Draft</span>',
@@ -3524,6 +3577,7 @@ function renderInvList(container, period, invs) {
   const filtered = invs.filter(inv => {
     if (invFilter === 'all')     return true;
     if (invFilter === 'overdue') return invIsOverdue(inv);
+    if (invFilter === 'changed') return !!inv.stale;
     return (inv.status || 'draft') === invFilter;
   });
 
@@ -3537,7 +3591,7 @@ function renderInvList(container, period, invs) {
 
   // Combined header: revenue badges (left) + status stats (right) on one line
   const headerHtml = `
-    <div class="d-flex justify-content-between align-items-center mb-3 pt-1 flex-wrap gap-2">
+    <div class="d-flex justify-content-between align-items-center mb-2 pt-1 flex-wrap gap-2">
       <div class="d-flex gap-2 flex-wrap">${badgesHtml}</div>
       <div class="d-flex gap-4" style="font-size:.82rem">
         <span><span class="badge bg-secondary me-1">${sub.draft.n}</span>
@@ -3553,6 +3607,9 @@ function renderInvList(container, period, invs) {
           <span class="text-muted">Overdue</span>
           <span class="fw-semibold ms-1 text-danger">$${sub.overdue.t.toFixed(2)}</span></span>
       </div>
+    </div>
+    <div class="mb-3">
+      <input type="search" class="form-control form-control-sm inv-search-input" placeholder="Search customer…" style="max-width:260px" value="${escHtml(_invSearchState[period]||'')}">
     </div>`;
 
   if (!filtered.length) {
@@ -3573,7 +3630,7 @@ function renderInvList(container, period, invs) {
     const rows = tableSorted.map(inv => {
       const statusKey = inv.status || 'draft';
       const overdue   = invIsOverdue(inv);
-      const rowBg     = overdue ? 'background:#fff5f5' : inv.stale ? 'background:#fff8f0' : '';
+      const rowBg     = overdue ? 'background:#fff5f5' : inv.review_flagged ? 'background:#fefce8' : inv.stale ? 'background:#fff8f0' : '';
       const statusBtns = STATUS_ORDER.map((s, i) => {
         const curIdx = STATUS_ORDER.indexOf(statusKey);
         const isCur  = s === statusKey;
@@ -3588,10 +3645,11 @@ function renderInvList(container, period, invs) {
       }).join('');
       const flagCell = [
         overdue ? '<span class="badge bg-danger" style="font-size:.58rem">Overdue</span>' : '',
+        inv.review_flagged ? '<span class="badge ms-1" style="font-size:.58rem;background:#eab308;color:#fff">&#9888; Review</span>' : '',
         inv.stale ? `<span class="badge ms-1 stale-badge" style="background:#f97316;color:#fff;font-size:.58rem;cursor:default" data-period="${escHtml(period)}" data-id="${escHtml(inv.invoice_id)}">&#9888; Changed</span>` : '',
-        inv.corrects ? '<span class="badge bg-secondary ms-1" style="font-size:.58rem">Corrected</span>' : '',
+        inv.corrects ? '<span class="badge ms-1" style="font-size:.58rem;background:#7c3aed">Corrected</span>' : '',
       ].filter(Boolean).join('');
-      return `<tr style="${rowBg}">
+      return `<tr style="${rowBg};cursor:pointer" data-search="${escHtml(inv.bill_to_name.toLowerCase())}" onclick="if(!event.target.closest('button,a')){window.open('/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print','_blank')}">
         <td class="small fw-semibold" style="white-space:nowrap">${escHtml(inv.invoice_id)}</td>
         <td class="small fw-semibold">${escHtml(inv.bill_to_name)}</td>
         <td class="small text-muted">${escHtml(inv.property_label || '')}</td>
@@ -3620,6 +3678,7 @@ function renderInvList(container, period, invs) {
           <tbody>${rows}</tbody>
         </table>
       </div>`;
+    _applyInvSearch(container, _invSearchState[period] || '');
     return;
   }
 
@@ -3636,7 +3695,7 @@ function renderInvList(container, period, invs) {
     const daysOver = overdue ? Math.ceil((Date.now() - dueMs) / 86400000) : 0;
     const historyId  = `inv-hist-${escHtml(inv.invoice_id)}`;
     const corrBadge  = inv.corrects
-      ? ` <span class="badge inv-hist-toggle" style="font-size:.6rem;cursor:pointer;background:#f97316"
+      ? ` <span class="badge inv-hist-toggle" style="font-size:.6rem;cursor:pointer;background:#7c3aed"
               data-period="${escHtml(period)}" data-id="${escHtml(inv.invoice_id)}"
               title="Click to see version history">CORRECTED &#9660;</span>` : '';
 
@@ -3664,8 +3723,8 @@ function renderInvList(container, period, invs) {
     const emailAddr = inv.bill_to_email || S.custsByKey?.[inv.customer_key]?.email || '';
 
     html += `
-    <div class="col-12 col-md-6 col-xl-4" id="inv-card-${escHtml(inv.invoice_id)}">
-      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#dc3545' : inv.stale ? 'border:2px solid #f97316' : ''}">
+    <div class="col-12 col-md-6 col-xl-4" id="inv-card-${escHtml(inv.invoice_id)}" data-search="${escHtml(inv.bill_to_name.toLowerCase())}">
+      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#dc3545' : inv.review_flagged ? 'border:2px solid #eab308' : inv.stale ? 'border:2px solid #f97316' : ''};cursor:pointer" onclick="if(!event.target.closest('button,a,.inv-hist-toggle,.stale-badge')){window.open('/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print','_blank')}">
         <div class="card-body pb-2">
           <div class="d-flex justify-content-between align-items-start mb-1">
             <div>
@@ -3698,15 +3757,20 @@ function renderInvList(container, period, invs) {
         </div>
         <div class="card-footer bg-transparent py-1 inv-card-footer">
           <div class="d-flex gap-1 justify-content-between align-items-center flex-wrap">
-            <div class="btn-group btn-group-sm inv-status-group">${statusBtns}</div>
+            <div class="d-flex align-items-center gap-1">
+              <div class="btn-group btn-group-sm inv-status-group">${statusBtns}</div>
+              <button class="btn btn-sm review-toggle-btn" title="${inv.review_flagged ? 'Clear review flag' : 'Flag for review'}"
+                onclick="toggleInvReview('${escHtml(period)}','${escHtml(inv.invoice_id)}',this)"
+                style="${inv.review_flagged ? 'background:#eab308;border-color:#eab308;color:#fff' : 'background:transparent;border:1.5px solid #eab308;color:#eab308'}">&#9888;</button>
+            </div>
             <div class="d-flex gap-1">
               <a href="/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print" target="_blank"
                  class="btn btn-sm btn-dark">&#128438; Preview</a>
-              ${emailAddr
+              ${emailAddr && !inv.review_flagged
                 ? `<button class="btn btn-sm btn-primary"
                      onclick="openEmailModal('${escHtml(period)}','${escHtml(inv.invoice_id)}','${escHtml(emailAddr)}','${escHtml(inv.bill_to_name)}')"
                      title="Email invoice to ${escHtml(emailAddr)}">&#9993; Email</button>`
-                : `<button class="btn btn-sm btn-primary" disabled title="No email on file">&#9993; Email</button>`}
+                : `<button class="btn btn-sm btn-primary" disabled title="${inv.review_flagged ? 'Clear review flag before sending' : 'No email on file'}">&#9993; Email</button>`}
               ${regenBtn}
               ${deleteBtn}
             </div>
@@ -3718,6 +3782,7 @@ function renderInvList(container, period, invs) {
 
   html += '</div>';
   container.innerHTML = html;
+  _applyInvSearch(container, _invSearchState[period] || '');
 }
 
 async function setInvStatus(period, invoiceId, newStatus, currentStatus) {
@@ -3759,6 +3824,23 @@ async function deleteInvoice(period, invoiceId) {
       showToast('Invoice deleted', 'warning');
       await loadInvPeriod(period);
       await loadInvoicesMainView();
+    } else {
+      showToast(data.error || 'Error', 'danger');
+    }
+  } catch(e) { showToast('Error: ' + e, 'danger'); }
+}
+
+async function toggleInvReview(period, invoiceId, btn) {
+  const nowFlagged = btn.style.background.includes('eab308') || btn.style.background === 'rgb(234, 179, 8)';
+  const newFlag = !nowFlagged;
+  try {
+    const res = await fetch(`/invoices/${period}/${invoiceId}/review`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({review_flagged: newFlag}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      await loadInvPeriod(period);
     } else {
       showToast(data.error || 'Error', 'danger');
     }
@@ -4090,11 +4172,12 @@ invMonthContent.addEventListener('click', async e => {
 });
 
 const INV_FILTER_CLS = {
-  all:     { on: 'btn btn-dark',                 off: 'btn btn-outline-secondary' },
-  draft:   { on: 'btn btn-secondary',            off: 'btn btn-outline-secondary' },
-  sent:    { on: 'btn btn-primary',              off: 'btn btn-outline-primary'   },
-  overdue: { on: 'btn btn-danger',               off: 'btn btn-outline-danger'    },
-  paid:    { on: 'btn btn-success',              off: 'btn btn-outline-success'   },
+  all:     { on: 'btn btn-dark',                 off: 'btn btn-outline-secondary',  onStyle: '',                                              offStyle: '' },
+  draft:   { on: 'btn btn-secondary',            off: 'btn btn-outline-secondary',  onStyle: '',                                              offStyle: '' },
+  sent:    { on: 'btn btn-primary',              off: 'btn btn-outline-primary',    onStyle: '',                                              offStyle: '' },
+  overdue: { on: 'btn btn-danger',               off: 'btn btn-outline-danger',     onStyle: '',                                              offStyle: '' },
+  paid:    { on: 'btn btn-success',              off: 'btn btn-outline-success',    onStyle: '',                                              offStyle: '' },
+  changed: { on: 'btn',                          off: 'btn btn-outline-warning',    onStyle: 'background:#f97316;border-color:#f97316;color:#fff', offStyle: 'color:#f97316;border-color:#f97316' },
 };
 document.getElementById('inv-filter-group').addEventListener('click', e => {
   const btn = e.target.closest('button[data-filter]');
@@ -4102,7 +4185,9 @@ document.getElementById('inv-filter-group').addEventListener('click', e => {
   invFilter = btn.dataset.filter;
   document.querySelectorAll('#inv-filter-group button').forEach(b => {
     const f = b.dataset.filter;
-    b.className = b === btn ? INV_FILTER_CLS[f].on : INV_FILTER_CLS[f].off;
+    const cls = INV_FILTER_CLS[f];
+    b.className = b === btn ? cls.on : cls.off;
+    b.style.cssText = b === btn ? (cls.onStyle || '') : (cls.offStyle || '');
   });
   // Re-render all cached periods under current tab
   const activePane = invMonthContent.querySelector('.tab-pane.active');
@@ -4113,6 +4198,15 @@ document.getElementById('inv-filter-group').addEventListener('click', e => {
 });
 
 document.getElementById('tab-invoices-btn').addEventListener('show.bs.tab', loadInvoicesMainView);
+
+invMonthContent.addEventListener('input', e => {
+  if (!e.target.classList.contains('inv-search-input')) return;
+  const activePane = invMonthContent.querySelector('.tab-pane.active');
+  if (!activePane) return;
+  const period = activePane.id.replace('inv-month-', '');
+  _invSearchState[period] = e.target.value;
+  _applyInvSearch(activePane, e.target.value);
+});
 
 document.getElementById('inv-view-toggle').addEventListener('click', e => {
   const btn = e.target.closest('button[data-invview]');

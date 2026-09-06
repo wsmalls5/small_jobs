@@ -155,6 +155,9 @@
   <button disabled title="No email on file for this customer" style="opacity:.5;cursor:not-allowed">&#9993; Email</button>
   {% endif %}
   <button onclick="doPrint()">&#128438; Print / Save PDF</button>
+  <button id="review-btn" onclick="toggleReview(this)"
+    style="{{ 'background:#eab308;color:#fff;border-color:#eab308' if inv.get('review_flagged') else '' }}"
+    title="{{ 'Clear review flag' if inv.get('review_flagged') else 'Flag for review (blocks email)' }}">&#9888; {{ 'Clear Review' if inv.get('review_flagged') else 'Flag Review' }}</button>
   <button onclick="window.close()">&#10005; Close</button>
   <span>Invoice {{ inv.invoice_id }}{% if inv.corrects %} &nbsp;|&nbsp; Corrects: {{ inv.corrects }}{% endif %}</span>
 </div>
@@ -203,6 +206,37 @@ function doPrint() {
   {% else %}
   window.print();
   {% endif %}
+}
+
+async function toggleReview(btn) {
+  const nowFlagged = btn.style.background.includes('eab308') || btn.style.background === 'rgb(234, 179, 8)';
+  const newFlag = !nowFlagged;
+  btn.disabled = true;
+  try {
+    const res = await fetch('/invoices/{{ period }}/{{ inv.invoice_id }}/review', {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({review_flagged: newFlag}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (newFlag) {
+        btn.style.cssText = 'background:#eab308;color:#fff;border-color:#eab308';
+        btn.textContent = '⚠ Clear Review';
+        btn.title = 'Clear review flag';
+        showPrintToast('Flagged for review — email blocked', 'success');
+      } else {
+        btn.style.cssText = '';
+        btn.textContent = '⚠ Flag Review';
+        btn.title = 'Flag for review (blocks email)';
+        showPrintToast('Review flag cleared', 'success');
+      }
+    } else {
+      showPrintToast(data.error || 'Error', 'danger');
+    }
+  } catch(e) {
+    showPrintToast('Error: ' + e, 'danger');
+  }
+  btn.disabled = false;
 }
 </script>
 
