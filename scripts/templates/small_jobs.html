@@ -126,6 +126,13 @@
                       border-radius:6px 6px 0 0; border:1px solid #dee2e6;
                       border-bottom:none; display:flex; justify-content:space-between; }
 
+  /* ── Invoice sub-tab nav ── */
+  .btn-invsubtab { background:none; border:none; border-bottom:2px solid transparent;
+                   border-radius:0; padding:.55rem 1rem; font-size:.875rem; font-weight:600;
+                   color:#6c757d; cursor:pointer; white-space:nowrap; }
+  .btn-invsubtab:hover { color:#0d6efd; }
+  .btn-invsubtab.active { color:#0d6efd; border-bottom-color:#0d6efd; }
+
   /* Invoice status: future buttons — outline style + muted hover instead of full fill */
   .btn-inv-future-secondary { color:#6c757d; border:1px solid #6c757d; }
   .btn-inv-future-secondary:hover { background:rgba(108,117,125,.18) !important; }
@@ -173,10 +180,6 @@
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="tab-invoices-btn" data-bs-toggle="tab"
               data-bs-target="#tab-invoices" type="button" role="tab">Invoices</button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="tab-history-btn" data-bs-toggle="tab"
-              data-bs-target="#tab-history" type="button" role="tab">History</button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="tab-financials-btn" data-bs-toggle="tab"
@@ -554,9 +557,12 @@
 
   <!-- ══════════════════════ TAB 4: INVOICES ══════════════════════ -->
   <div class="tab-pane fade" id="tab-invoices" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
-      <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Invoices</h6>
-      <div class="d-flex gap-2 align-items-center">
+    <!-- Sub-tab header -->
+    <div class="d-flex align-items-stretch px-4 border-bottom" style="gap:0">
+      <button class="btn-invsubtab active" id="inv-sub-invoices-btn">Invoices</button>
+      <button class="btn-invsubtab" id="inv-sub-history-btn">History</button>
+      <!-- Invoice controls -->
+      <div class="d-flex gap-2 align-items-center flex-wrap py-2 ms-3" id="inv-controls">
         <button id="inv-net-days-btn" class="btn btn-sm btn-outline-danger" title="Click to change net days">Net20 days</button>
         <input type="number" id="inv-net-days-input" min="1" max="365" value="20" placeholder="days">
         <div class="btn-group btn-group-sm" id="inv-filter-group" role="group">
@@ -576,14 +582,24 @@
         <button class="btn btn-sm btn-primary" id="inv-solo-btn">&#9889; Generate Single Invoice &#9889;</button>
         <button class="btn btn-sm btn-success" id="inv-generate-btn">&#9889; Generate All Invoices &#9889;</button>
       </div>
+      <!-- History search (hidden until History sub-tab active) -->
+      <div class="d-flex align-items-center py-2 ms-3" id="hist-controls" style="display:none">
+        <input type="text" id="hist-search" class="form-control form-control-sm"
+               style="max-width:260px" placeholder="Search customer…">
+      </div>
     </div>
-    <div class="px-4 pt-3">
+    <!-- Invoices content -->
+    <div id="inv-sub-invoices-content" class="px-4 pt-3">
       <ul class="nav nav-tabs mb-0" id="invMonthTabs" role="tablist"></ul>
       <div class="tab-content border border-top-0 rounded-bottom p-3 bg-white" id="invMonthContent"></div>
       <div id="inv-empty-msg" class="text-center text-muted py-5" style="display:none">
         <div style="font-size:2.5rem">&#128203;</div>
         <p class="mt-2">No invoices yet — import hours then click <strong>Generate Invoices</strong>.</p>
       </div>
+    </div>
+    <!-- History content -->
+    <div id="hist-content" class="px-4 pt-3" style="display:none">
+      <p class="text-muted small">Loading…</p>
     </div>
   </div>
 
@@ -609,19 +625,7 @@
     </div>
   </div>
 
-  <!-- ══════════════════════ TAB 5: HISTORY ══════════════════════ -->
-  <div class="tab-pane fade" id="tab-history" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
-      <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Invoice History by Customer</h6>
-      <input type="text" id="hist-search" class="form-control form-control-sm"
-             style="max-width:240px" placeholder="Search customer…">
-    </div>
-    <div class="px-4 pt-3" id="hist-content">
-      <p class="text-muted small">Loading…</p>
-    </div>
-  </div>
-
-  <!-- ══════════════════════ TAB 6: FINANCIALS ══════════════════════ -->
+  <!-- ══════════════════════ TAB 5: FINANCIALS ══════════════════════ -->
   <div class="tab-pane fade" id="tab-financials" role="tabpanel">
     <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
       <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Financials</h6>
@@ -4372,8 +4376,13 @@ function renderHistory(data) {
           <button class="accordion-button collapsed py-2" type="button"
                   data-bs-toggle="collapse" data-bs-target="#${id}">
             <div class="d-flex justify-content-between align-items-center w-100 pe-3">
-              <span class="fw-semibold">${escHtml(c.label)}</span>
-              <span class="text-muted small ms-3 text-nowrap">
+              <div class="d-flex align-items-baseline gap-2" style="min-width:0">
+                <span class="fw-semibold">${escHtml(c.label)}</span>
+                ${c.property_label && c.property_label !== c.label
+                  ? `<span class="text-muted" style="font-size:.75rem;white-space:nowrap">${escHtml(c.property_label)}</span>`
+                  : ''}
+              </div>
+              <span class="text-muted small ms-3 text-nowrap flex-shrink-0">
                 ${c.invoice_count} invoice${c.invoice_count !== 1 ? 's' : ''}
                 &nbsp;·&nbsp;${fmt(c.total_billed)} billed
                 &nbsp;·&nbsp;<span class="text-success">${fmt(paidTotal)} paid</span>
@@ -4420,7 +4429,24 @@ document.getElementById('hist-search').addEventListener('input', () => {
   if (_historyData) renderHistory(_historyData);
 });
 
-document.getElementById('tab-history-btn').addEventListener('show.bs.tab', loadHistoryView);
+document.getElementById('inv-sub-invoices-btn').addEventListener('click', () => {
+  document.getElementById('inv-sub-invoices-btn').classList.add('active');
+  document.getElementById('inv-sub-history-btn').classList.remove('active');
+  document.getElementById('inv-controls').style.display = '';
+  document.getElementById('hist-controls').style.display = 'none';
+  document.getElementById('inv-sub-invoices-content').style.display = '';
+  document.getElementById('hist-content').style.display = 'none';
+});
+
+document.getElementById('inv-sub-history-btn').addEventListener('click', () => {
+  document.getElementById('inv-sub-history-btn').classList.add('active');
+  document.getElementById('inv-sub-invoices-btn').classList.remove('active');
+  document.getElementById('inv-controls').style.display = 'none';
+  document.getElementById('hist-controls').style.removeProperty('display');
+  document.getElementById('inv-sub-invoices-content').style.display = 'none';
+  document.getElementById('hist-content').style.display = '';
+  loadHistoryView();
+});
 
 // ═══════════════════════════════════════════════════════════════
 // 6. FINANCIALS

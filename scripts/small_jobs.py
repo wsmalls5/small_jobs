@@ -1954,11 +1954,17 @@ def api_invoices_history_by_customer():
         for inv in invs:
             if inv.get("superseded"):
                 continue
-            ck    = inv.get("customer_key", "")
-            cust  = db.get(ck, {})
-            label = inv.get("bill_to_name") or cust.get("label", ck)
+            ck             = inv.get("customer_key", "")
+            cust           = db.get(ck, {})
+            property_label = cust.get("label", ck)
+            bill_to_name   = inv.get("bill_to_name", "") or property_label
             if ck not in out:
-                out[ck] = {"label": label, "customer_key": ck, "invoices": []}
+                out[ck] = {
+                    "label":          bill_to_name,
+                    "property_label": property_label,
+                    "customer_key":   ck,
+                    "invoices":       [],
+                }
             out[ck]["invoices"].append({
                 "invoice_id":  inv["invoice_id"],
                 "period":      period,
