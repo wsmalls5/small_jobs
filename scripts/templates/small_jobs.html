@@ -674,6 +674,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="cust-modal-title">Add Customer</h5>
+        <button type="button" class="btn btn-sm btn-outline-primary me-2" id="cust-edit-toggle-btn" style="display:none">Edit</button>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -723,6 +724,16 @@
             <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-alias-btn">
               + Add alias
             </button>
+          </div>
+          <!-- Invoice history (visible only for existing customers) -->
+          <div class="col-12" id="cust-inv-section" style="display:none">
+            <hr class="my-2">
+            <div class="d-flex align-items-center gap-2 py-1" id="cust-inv-toggle"
+                 style="cursor:pointer;user-select:none">
+              <span class="fw-semibold small text-muted text-uppercase" style="letter-spacing:.4px">Invoices</span>
+              <span id="cust-inv-chevron" class="text-muted" style="font-size:.7rem">&#9654;</span>
+            </div>
+            <div id="cust-inv-body" style="display:none"></div>
           </div>
         </div>
       </div>
@@ -1140,6 +1151,96 @@ async function loadAllCustomers() {
 // ═══════════════════════════════════════════════════════════════
 // 4. CUSTOMER TAB
 // ═══════════════════════════════════════════════════════════════
+
+const _custFieldIds = ['cm-label','cm-billto','cm-address','cm-phone','cm-email','cm-rate'];
+
+function setCustModalReadonly(readonly) {
+  _custFieldIds.forEach(id => {
+    const el = document.getElementById(id);
+    el.readOnly = readonly;
+    el.classList.toggle('bg-light', readonly);
+  });
+  const typeEl = document.getElementById('cm-type');
+  typeEl.disabled = readonly;
+  typeEl.classList.toggle('bg-light', readonly);
+  document.getElementById('add-alias-btn').style.display = readonly ? 'none' : '';
+  document.querySelectorAll('#alias-list .remove-alias-btn').forEach(b => b.style.display = readonly ? 'none' : '');
+  document.getElementById('cust-save-btn').style.display = readonly ? 'none' : '';
+  document.getElementById('cust-edit-toggle-btn').style.display = readonly ? '' : 'none';
+}
+
+function _openExistingCustModal(key, c) {
+  document.getElementById('cust-modal-title').textContent = 'Customer Information';
+  document.getElementById('cust-edit-key').value  = key;
+  document.getElementById('cm-label').value        = c.property_label  || '';
+  document.getElementById('cm-billto').value       = c.bill_to_name    || '';
+  document.getElementById('cm-address').value      = c.address         || '';
+  document.getElementById('cm-phone').value        = c.phone           || '';
+  document.getElementById('cm-email').value        = c.email           || '';
+  document.getElementById('cm-rate').value         = c.hourly_rate     || 70;
+  document.getElementById('cm-type').value         = c.customer_type   || 'individual';
+  aliasList.innerHTML = '';
+  (c.aliases || []).forEach(a => addAliasRow(a));
+  document.getElementById('cust-del-btn').style.display     = '';
+  document.getElementById('cust-msg-btn').style.display     = c.email ? '' : 'none';
+  const archBtn = document.getElementById('cust-archive-btn');
+  archBtn.style.display    = '';
+  archBtn.textContent      = c.archived ? 'Activate' : 'Archive';
+  archBtn.dataset.archived = c.archived ? 'true' : 'false';
+  setCustModalReadonly(true);
+  // reset invoice section
+  document.getElementById('cust-inv-section').style.display = '';
+  document.getElementById('cust-inv-body').style.display    = 'none';
+  document.getElementById('cust-inv-chevron').textContent   = '►';
+  custModal.show();
+}
+
+function renderCustInvoiceTable(invoices) {
+  if (!invoices.length) return '<p class="text-muted small mt-2">No invoices on record.</p>';
+  const STATUS_COLOR = { draft:'secondary', sent:'primary', paid:'success', overdue:'danger', review:'warning', changed:'warning' };
+  const fmt = n => '$' + (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  let html = `<table class="table table-sm table-hover mb-1 align-middle" style="font-size:.8rem">
+    <thead class="table-light"><tr>
+      <th>Period</th><th>Invoice #</th><th>Status</th>
+      <th class="text-end">Amount</th><th class="text-end">PDF</th>
+    </tr></thead><tbody>`;
+  invoices.forEach(inv => {
+    html += `<tr>
+      <td>${escHtml(inv.month_label || inv.period)}</td>
+      <td style="font-family:monospace;font-size:.75rem">${escHtml(inv.invoice_id)}</td>
+      <td><span class="badge bg-${STATUS_COLOR[inv.status] || 'secondary'}">${inv.status}</span></td>
+      <td class="text-end">${fmt(inv.total)}</td>
+      <td class="text-end">
+        <a href="/invoices/${inv.period}/${inv.invoice_id}/print" target="_blank"
+           class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.68rem">View PDF</a>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+document.getElementById('cust-edit-toggle-btn').addEventListener('click', () => {
+  document.getElementById('cust-modal-title').textContent = 'Edit Customer';
+  setCustModalReadonly(false);
+  document.getElementById('cm-label').focus();
+});
+
+document.getElementById('cust-inv-toggle').addEventListener('click', async () => {
+  const body    = document.getElementById('cust-inv-body');
+  const chevron = document.getElementById('cust-inv-chevron');
+  const isOpen  = body.style.display !== 'none';
+  body.style.display    = isOpen ? 'none' : '';
+  chevron.textContent   = isOpen ? '►' : '▼';
+  if (isOpen) return;
+  const key = document.getElementById('cust-edit-key').value;
+  if (!key) return;
+  body.innerHTML = '<p class="text-muted small mt-2">Loading…</p>';
+  const res  = await fetch(`/invoices/by-customer/${encodeURIComponent(key)}`);
+  const data = await res.json();
+  body.innerHTML = renderCustInvoiceTable(data);
+});
+
 const custSearch    = document.getElementById('cust-search');
 const custTbody     = document.getElementById('cust-tbody');
 custTbody.addEventListener('click', e => {
@@ -1288,24 +1389,7 @@ document.getElementById('tab-customers').addEventListener('click', async e => {
   const key = row.dataset.key;
   const res = await fetch(`/customers/${encodeURIComponent(key)}`);
   const c   = await res.json();
-  document.getElementById('cust-modal-title').textContent = 'Edit Customer';
-  document.getElementById('cust-edit-key').value  = key;
-  document.getElementById('cm-label').value        = c.property_label  || '';
-  document.getElementById('cm-billto').value       = c.bill_to_name    || '';
-  document.getElementById('cm-address').value      = c.address         || '';
-  document.getElementById('cm-phone').value        = c.phone           || '';
-  document.getElementById('cm-email').value        = c.email           || '';
-  document.getElementById('cm-rate').value         = c.hourly_rate     || 70;
-  document.getElementById('cm-type').value         = c.customer_type   || 'individual';
-  aliasList.innerHTML = '';
-  (c.aliases || []).forEach(a => addAliasRow(a));
-  document.getElementById('cust-del-btn').style.display = '';
-  document.getElementById('cust-msg-btn').style.display = c.email ? '' : 'none';
-  const archBtn1 = document.getElementById('cust-archive-btn');
-  archBtn1.style.display    = '';
-  archBtn1.textContent      = c.archived ? 'Activate' : 'Archive';
-  archBtn1.dataset.archived = c.archived ? 'true' : 'false';
-  custModal.show();
+  _openExistingCustModal(key, c);
 });
 
 document.getElementById('cust-del-btn').addEventListener('click', async () => {
@@ -1359,6 +1443,8 @@ addCustBtn.addEventListener('click', () => {
   document.getElementById('cust-del-btn').style.display     = 'none';
   document.getElementById('cust-msg-btn').style.display     = 'none';
   document.getElementById('cust-archive-btn').style.display = 'none';
+  document.getElementById('cust-inv-section').style.display = 'none';
+  setCustModalReadonly(false);
   custModal.show();
 });
 
@@ -4211,24 +4297,7 @@ invMonthContent.addEventListener('click', async e => {
     if (!key) return;
     const res = await fetch(`/customers/${encodeURIComponent(key)}`);
     const c   = await res.json();
-    document.getElementById('cust-modal-title').textContent = 'Edit Customer';
-    document.getElementById('cust-edit-key').value  = key;
-    document.getElementById('cm-label').value        = c.property_label  || '';
-    document.getElementById('cm-billto').value       = c.bill_to_name    || '';
-    document.getElementById('cm-address').value      = c.address         || '';
-    document.getElementById('cm-phone').value        = c.phone           || '';
-    document.getElementById('cm-email').value        = c.email           || '';
-    document.getElementById('cm-rate').value         = c.hourly_rate     || 70;
-    document.getElementById('cm-type').value         = c.customer_type   || 'individual';
-    aliasList.innerHTML = '';
-    (c.aliases || []).forEach(a => addAliasRow(a));
-    document.getElementById('cust-del-btn').style.display = '';
-    document.getElementById('cust-msg-btn').style.display = c.email ? '' : 'none';
-    const archBtn2 = document.getElementById('cust-archive-btn');
-    archBtn2.style.display    = '';
-    archBtn2.textContent      = c.archived ? 'Activate' : 'Archive';
-    archBtn2.dataset.archived = c.archived ? 'true' : 'false';
-    custModal.show();
+    _openExistingCustModal(key, c);
     return;
   }
   const badge = e.target.closest('.inv-hist-toggle');

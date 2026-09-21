@@ -1941,6 +1941,32 @@ def api_overdue_all():
     return jsonify(out)
 
 
+@app.route("/invoices/by-customer/<customer_key>")
+def api_invoices_by_customer(customer_key):
+    out = []
+    for fp in sorted(INVOICES.glob("invoices_*.json"), reverse=True):
+        period = fp.stem.replace("invoices_", "")
+        try:
+            invs = json.loads(fp.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        for inv in invs:
+            if inv.get("superseded"):
+                continue
+            if inv.get("customer_key") != customer_key:
+                continue
+            out.append({
+                "invoice_id":  inv["invoice_id"],
+                "period":      period,
+                "month_label": inv.get("month_label", period),
+                "status":      inv.get("status", "draft"),
+                "total":       inv.get("total", 0),
+                "date":        inv.get("date", ""),
+            })
+    out.sort(key=lambda i: i["period"], reverse=True)
+    return jsonify(out)
+
+
 @app.route("/invoices/history-by-customer")
 def api_invoices_history_by_customer():
     db  = _load_customers()
