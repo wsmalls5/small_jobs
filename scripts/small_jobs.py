@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 Small Jobs - Receipt Assignment Web App
 Run:  python scripts/receipt_app.py
@@ -20,7 +20,6 @@ EXPENSES  = BASE_DIR / "data" / "expenses"
 HOURS     = BASE_DIR / "data" / "hours"
 INVOICES  = BASE_DIR / "data" / "invoices"
 CUSTOMERS = BASE_DIR / "data" / "customers" / "customers.json"
-TASKS     = BASE_DIR / "data" / "tasks" / "tasks.json"
 VENDORS   = BASE_DIR / "data" / "vendors.json"
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 
@@ -2223,72 +2222,6 @@ def print_invoice(period, invoice_id):
             pass
     return render_template("invoice_print.html", inv=inv, period=period)
 
-
-# ── Tasks ────────────────────────────────────────────────────────────────────
-
-def _load_tasks():
-    if not TASKS.exists():
-        return []
-    return json.loads(TASKS.read_text(encoding="utf-8-sig"))
-
-def _save_tasks(tasks):
-    tmp = TASKS.with_suffix(".tmp")
-    tmp.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
-    os.replace(tmp, TASKS)
-
-def _next_task_id(tasks):
-    nums = [int(t["task_id"].split("_")[1]) for t in tasks
-            if t.get("task_id", "").startswith("task_") and t["task_id"].split("_")[1].isdigit()]
-    return f"task_{(max(nums) + 1) if nums else 1:04d}"
-
-@app.route("/tasks")
-def api_tasks():
-    return jsonify(_load_tasks())
-
-@app.route("/tasks", methods=["POST"])
-def create_task():
-    body  = request.get_json() or {}
-    tasks = _load_tasks()
-    now   = datetime.datetime.now().isoformat(timespec="seconds")
-    task  = {
-        "task_id":        _next_task_id(tasks),
-        "customer_key":   body.get("customer_key", ""),
-        "job_label":      body.get("job_label", ""),
-        "description":    body.get("description", "").strip(),
-        "hours_estimate": body.get("hours_estimate") or None,
-        "priority":       body.get("priority", "medium"),
-        "due_date":       body.get("due_date") or None,
-        "status":         "open",
-        "created_at":     now,
-        "completed_at":   None,
-    }
-    tasks.append(task)
-    _save_tasks(tasks)
-    return jsonify({"ok": True, "task": task})
-
-@app.route("/tasks/<task_id>", methods=["PUT"])
-def update_task(task_id):
-    body  = request.get_json() or {}
-    tasks = _load_tasks()
-    task  = next((t for t in tasks if t["task_id"] == task_id), None)
-    if not task:
-        return jsonify({"error": "not found"}), 404
-    for field in ("description", "customer_key", "job_label", "hours_estimate",
-                  "priority", "due_date", "status"):
-        if field in body:
-            task[field] = body[field]
-    if task.get("status") == "complete" and not task.get("completed_at"):
-        task["completed_at"] = datetime.datetime.now().isoformat(timespec="seconds")
-    elif task.get("status") != "complete":
-        task["completed_at"] = None
-    _save_tasks(tasks)
-    return jsonify({"ok": True, "task": task})
-
-@app.route("/tasks/<task_id>", methods=["DELETE"])
-def delete_task(task_id):
-    tasks = [t for t in _load_tasks() if t["task_id"] != task_id]
-    _save_tasks(tasks)
-    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
