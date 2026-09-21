@@ -1941,6 +1941,41 @@ def api_overdue_all():
     return jsonify(out)
 
 
+@app.route("/invoices/history-by-customer")
+def api_invoices_history_by_customer():
+    db  = _load_customers()
+    out = {}
+    for fp in sorted(INVOICES.glob("invoices_*.json"), reverse=True):
+        period = fp.stem.replace("invoices_", "")
+        try:
+            invs = json.loads(fp.read_text(encoding="utf-8-sig"))
+        except Exception:
+            continue
+        for inv in invs:
+            if inv.get("superseded"):
+                continue
+            ck    = inv.get("customer_key", "")
+            cust  = db.get(ck, {})
+            label = inv.get("bill_to_name") or cust.get("label", ck)
+            if ck not in out:
+                out[ck] = {"label": label, "customer_key": ck, "invoices": []}
+            out[ck]["invoices"].append({
+                "invoice_id":  inv["invoice_id"],
+                "period":      period,
+                "month_label": inv.get("month_label", period),
+                "status":      inv.get("status", "draft"),
+                "total":       inv.get("total", 0),
+                "date":        inv.get("date", ""),
+            })
+    result = sorted(out.values(), key=lambda x: x["label"].lower())
+    for c in result:
+        c["invoices"].sort(key=lambda i: i["period"], reverse=True)
+        c["invoice_count"] = len(c["invoices"])
+        c["total_billed"]  = round(sum(i["total"] for i in c["invoices"]), 2)
+        c["total_paid"]    = round(sum(i["total"] for i in c["invoices"] if i["status"] == "paid"), 2)
+    return jsonify(result)
+
+
 @app.route("/invoices/send-overdue-reminders", methods=["POST"])
 def send_overdue_reminders():
     if not SMTP_USER or not SMTP_PASS:

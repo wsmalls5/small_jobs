@@ -175,6 +175,10 @@
               data-bs-target="#tab-invoices" type="button" role="tab">Invoices</button>
     </li>
     <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-history-btn" data-bs-toggle="tab"
+              data-bs-target="#tab-history" type="button" role="tab">History</button>
+    </li>
+    <li class="nav-item" role="presentation">
       <button class="nav-link" id="tab-financials-btn" data-bs-toggle="tab"
               data-bs-target="#tab-financials" type="button" role="tab">Financials</button>
     </li>
@@ -605,7 +609,19 @@
     </div>
   </div>
 
-  <!-- ══════════════════════ TAB 5: FINANCIALS ══════════════════════ -->
+  <!-- ══════════════════════ TAB 5: HISTORY ══════════════════════ -->
+  <div class="tab-pane fade" id="tab-history" role="tabpanel">
+    <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
+      <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Invoice History by Customer</h6>
+      <input type="text" id="hist-search" class="form-control form-control-sm"
+             style="max-width:240px" placeholder="Search customer…">
+    </div>
+    <div class="px-4 pt-3" id="hist-content">
+      <p class="text-muted small">Loading…</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB 6: FINANCIALS ══════════════════════ -->
   <div class="tab-pane fade" id="tab-financials" role="tabpanel">
     <div class="d-flex justify-content-between align-items-center px-4 pt-3 pb-2 border-bottom">
       <h6 class="mb-0 fw-semibold text-muted text-uppercase" style="letter-spacing:.5px">Financials</h6>
@@ -4318,6 +4334,93 @@ document.getElementById('inv-view-toggle').addEventListener('click', e => {
   const activePane = invMonthContent.querySelector('.tab-pane.active');
   if (activePane) loadInvPeriod(activePane.id.replace('inv-month-', ''));
 });
+
+// ═══════════════════════════════════════════════════════════════
+// 5b. HISTORY — Invoice history by customer
+// ═══════════════════════════════════════════════════════════════
+
+let _historyData = null;
+
+async function loadHistoryView() {
+  const container = document.getElementById('hist-content');
+  if (_historyData) { renderHistory(_historyData); return; }
+  container.innerHTML = '<p class="text-muted small">Loading…</p>';
+  const res   = await fetch('/invoices/history-by-customer');
+  _historyData = await res.json();
+  renderHistory(_historyData);
+}
+
+function renderHistory(data) {
+  const q        = (document.getElementById('hist-search')?.value || '').toLowerCase();
+  const filtered = q ? data.filter(c => c.label.toLowerCase().includes(q)) : data;
+  const container = document.getElementById('hist-content');
+  if (!filtered.length) {
+    container.innerHTML = '<p class="text-muted small py-3">No invoices found.</p>';
+    return;
+  }
+  const STATUS_COLOR = { draft:'secondary', sent:'primary', paid:'success',
+                         overdue:'danger', review:'warning', changed:'warning' };
+  const fmt = n => '$' + (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  let html = '<div class="accordion" id="hist-accordion">';
+  filtered.forEach((c, idx) => {
+    const id      = `hist-cust-${idx}`;
+    const paidTotal = c.invoices.filter(i => i.status === 'paid')
+                                .reduce((s, i) => s + (i.total || 0), 0);
+    html += `
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed py-2" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#${id}">
+            <div class="d-flex justify-content-between align-items-center w-100 pe-3">
+              <span class="fw-semibold">${escHtml(c.label)}</span>
+              <span class="text-muted small ms-3 text-nowrap">
+                ${c.invoice_count} invoice${c.invoice_count !== 1 ? 's' : ''}
+                &nbsp;·&nbsp;${fmt(c.total_billed)} billed
+                &nbsp;·&nbsp;<span class="text-success">${fmt(paidTotal)} paid</span>
+              </span>
+            </div>
+          </button>
+        </h2>
+        <div id="${id}" class="accordion-collapse collapse">
+          <div class="accordion-body p-0">
+            <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.85rem">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-3">Period</th>
+                  <th>Invoice #</th>
+                  <th>Status</th>
+                  <th class="text-end">Amount</th>
+                  <th class="text-end pe-3">PDF</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${c.invoices.map(inv => `
+                  <tr>
+                    <td class="ps-3">${escHtml(inv.month_label || inv.period)}</td>
+                    <td style="font-family:monospace;font-size:.8rem">${escHtml(inv.invoice_id)}</td>
+                    <td><span class="badge bg-${STATUS_COLOR[inv.status] || 'secondary'}">${inv.status}</span></td>
+                    <td class="text-end">${fmt(inv.total)}</td>
+                    <td class="text-end pe-3">
+                      <a href="/invoices/${inv.period}/${inv.invoice_id}/print" target="_blank"
+                         class="btn btn-outline-secondary btn-sm py-0 px-2"
+                         style="font-size:.72rem">View PDF</a>
+                    </td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+document.getElementById('hist-search').addEventListener('input', () => {
+  if (_historyData) renderHistory(_historyData);
+});
+
+document.getElementById('tab-history-btn').addEventListener('show.bs.tab', loadHistoryView);
 
 // ═══════════════════════════════════════════════════════════════
 // 6. FINANCIALS
