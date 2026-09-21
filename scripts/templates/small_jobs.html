@@ -674,8 +674,10 @@
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="cust-modal-title">Add Customer</h5>
-        <button type="button" class="btn btn-sm btn-outline-primary me-2" id="cust-edit-toggle-btn" style="display:none">Edit</button>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-primary" id="cust-edit-toggle-btn" style="display:none">Edit</button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
       </div>
       <div class="modal-body">
         <input type="hidden" id="cust-edit-key">
@@ -719,11 +721,17 @@
             </select>
           </div>
           <div class="col-12">
-            <label class="form-label fw-semibold">Aliases</label>
-            <div id="alias-list"></div>
-            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-alias-btn">
-              + Add alias
-            </button>
+            <div class="d-flex align-items-center gap-2" id="cust-alias-toggle"
+                 style="cursor:pointer;user-select:none;padding:.3rem 0">
+              <span class="fw-semibold">Aliases</span>
+              <span id="cust-alias-chevron" class="text-muted" style="font-size:.7rem">&#9654;</span>
+            </div>
+            <div id="cust-alias-body" style="display:none">
+              <div id="alias-list"></div>
+              <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-alias-btn">
+                + Add alias
+              </button>
+            </div>
           </div>
           <!-- Invoice history (visible only for existing customers) -->
           <div class="col-12" id="cust-inv-section" style="display:none">
@@ -1188,10 +1196,17 @@ function _openExistingCustModal(key, c) {
   archBtn.textContent      = c.archived ? 'Activate' : 'Archive';
   archBtn.dataset.archived = c.archived ? 'true' : 'false';
   setCustModalReadonly(true);
-  // reset invoice section
+  // aliases: collapsed
+  document.getElementById('cust-alias-body').style.display  = 'none';
+  document.getElementById('cust-alias-chevron').textContent = '►';
+  // invoices: open by default, auto-fetch
   document.getElementById('cust-inv-section').style.display = '';
-  document.getElementById('cust-inv-body').style.display    = 'none';
-  document.getElementById('cust-inv-chevron').textContent   = '►';
+  document.getElementById('cust-inv-body').style.display    = '';
+  document.getElementById('cust-inv-chevron').textContent   = '▼';
+  document.getElementById('cust-inv-body').innerHTML        = '<p class="text-muted small mt-2">Loading…</p>';
+  fetch(`/invoices/by-customer/${encodeURIComponent(key)}`)
+    .then(r => r.json())
+    .then(data => { document.getElementById('cust-inv-body').innerHTML = renderCustInvoiceTable(data); });
   custModal.show();
 }
 
@@ -1239,6 +1254,14 @@ document.getElementById('cust-inv-toggle').addEventListener('click', async () =>
   const res  = await fetch(`/invoices/by-customer/${encodeURIComponent(key)}`);
   const data = await res.json();
   body.innerHTML = renderCustInvoiceTable(data);
+});
+
+document.getElementById('cust-alias-toggle').addEventListener('click', () => {
+  const body    = document.getElementById('cust-alias-body');
+  const chevron = document.getElementById('cust-alias-chevron');
+  const isOpen  = body.style.display !== 'none';
+  body.style.display  = isOpen ? 'none' : '';
+  chevron.textContent = isOpen ? '►' : '▼';
 });
 
 const custSearch    = document.getElementById('cust-search');
@@ -1443,7 +1466,9 @@ addCustBtn.addEventListener('click', () => {
   document.getElementById('cust-del-btn').style.display     = 'none';
   document.getElementById('cust-msg-btn').style.display     = 'none';
   document.getElementById('cust-archive-btn').style.display = 'none';
-  document.getElementById('cust-inv-section').style.display = 'none';
+  document.getElementById('cust-inv-section').style.display  = 'none';
+  document.getElementById('cust-alias-body').style.display   = 'none';
+  document.getElementById('cust-alias-chevron').textContent  = '►';
   setCustModalReadonly(false);
   custModal.show();
 });
