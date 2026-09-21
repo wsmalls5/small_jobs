@@ -132,6 +132,10 @@
                    color:#6c757d; cursor:pointer; white-space:nowrap; }
   .btn-invsubtab:hover { color:#0d6efd; }
   .btn-invsubtab.active { color:#0d6efd; border-bottom-color:#0d6efd; }
+  /* shrink invoice controls bar so everything fits one row */
+  #inv-controls .btn        { font-size:.71rem !important; padding:.15rem .35rem !important; }
+  #inv-controls .btn-group-sm>.btn { font-size:.71rem !important; padding:.15rem .35rem !important; }
+  #inv-net-days-input       { font-size:.71rem; padding:.15rem .28rem; width:3.4rem; }
 
   /* Invoice status: future buttons — outline style + muted hover instead of full fill */
   .btn-inv-future-secondary { color:#6c757d; border:1px solid #6c757d; }
@@ -560,9 +564,9 @@
     <!-- Sub-tab header -->
     <div class="d-flex align-items-stretch px-4 border-bottom" style="gap:0">
       <button class="btn-invsubtab active" id="inv-sub-invoices-btn">Invoices</button>
-      <button class="btn-invsubtab" id="inv-sub-history-btn">History</button>
+      <button class="btn-invsubtab" id="inv-sub-history-btn">By Customer</button>
       <!-- Invoice controls -->
-      <div class="d-flex gap-2 align-items-center flex-wrap py-2 ms-3" id="inv-controls">
+      <div class="d-flex gap-2 align-items-center py-2 ms-3" id="inv-controls">
         <button id="inv-net-days-btn" class="btn btn-sm btn-outline-danger" title="Click to change net days">Net20 days</button>
         <input type="number" id="inv-net-days-input" min="1" max="365" value="20" placeholder="days">
         <div class="btn-group btn-group-sm" id="inv-filter-group" role="group">
@@ -4340,7 +4344,7 @@ document.getElementById('inv-view-toggle').addEventListener('click', e => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// 5b. HISTORY — Invoice history by customer
+// 5b. BY CUSTOMER — Invoice history by customer
 // ═══════════════════════════════════════════════════════════════
 
 let _historyData = null;
