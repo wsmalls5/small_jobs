@@ -38,7 +38,7 @@ SMTP_USER  = os.environ.get("SMTP_USER",  "")   # your Gmail / SMTP address
 SMTP_PASS  = os.environ.get("SMTP_PASS",  "")   # app password (not login password)
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "") or SMTP_USER
 
-for d in (UPLOADS, INBOX, EXPENSES, HOURS, INVOICES, TASKS.parent):
+for d in (UPLOADS, INBOX, EXPENSES, HOURS, INVOICES):
     d.mkdir(parents=True, exist_ok=True)
 if REVIEWED:
     REVIEWED.mkdir(parents=True, exist_ok=True)
