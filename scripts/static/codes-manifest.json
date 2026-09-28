@@ -1,0 +1,25 @@
+{
+  "name": "Door Codes",
+  "short_name": "Door Codes",
+  "description": "Read-only door code lookup for job sites — works offline",
+  "start_url": "/codes/",
+  "scope": "/codes/",
+  "display": "standalone",
+  "background_color": "#1c2733",
+  "theme_color": "#2f7a65",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/static/codes-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/codes-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -66,6 +66,24 @@ or start fresh — the app creates the folder structure automatically on first r
 
 ---
 
+## Door codes on the phone
+
+A read-only companion app at `/codes/` surfaces each customer's door codes for
+use in the field. It stores its own copy on the phone, so it works with the
+server shut off and with no signal.
+
+- **Enter codes:** Customers tab → click a customer → Edit → Door Codes
+- **Phone app:** open `https://<machine>.<tailnet>.ts.net/codes/` in Safari →
+  Share → Add to Home Screen
+- **Frozen snapshot:** `/codes/export` downloads one self-contained HTML file
+  that works with no server at all (never updates itself)
+
+Offline use requires an `https://` address — run `tailscale serve --bg 5001` on
+the host once. Full walkthrough in
+[Door Codes on iPhone - setup.txt](Door%20Codes%20on%20iPhone%20-%20setup.txt).
+
+---
+
 ## Folder structure
 
 ```

@@ -9,7 +9,7 @@ import json, os, re, uuid, datetime, calendar, smtplib, ssl, difflib, threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text      import MIMEText
 from pathlib import Path
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, make_response
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -468,6 +468,98 @@ def manifest():
                                mimetype="application/manifest+json")
 
 
+# ── Door Codes: read-only mobile PWA (offline-first) ─────────────────────────
+# Lives under /codes/ so its service worker gets scope "/codes/" and does not
+# fight the main app's root-scoped /sw.js for control of the page.
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+# Internal bookkeeping "customers" that are not real job sites
+_NON_SITE_TYPES = {"tools", "personal"}
+
+
+def _normalize_door_codes(raw):
+    """Coerce stored or posted door codes into [{"label": str, "code": str}].
+
+    Accepts a bare string per entry (legacy/hand-edited JSON) or a dict.
+    Entries without a code are dropped — an empty row is never persisted.
+    """
+    out = []
+    for item in (raw or []):
+        if isinstance(item, str):
+            label, code = "", item.strip()
+        elif isinstance(item, dict):
+            label = str(item.get("label") or "").strip()
+            code  = str(item.get("code")  or "").strip()
+        else:
+            continue
+        if code:
+            out.append({"label": label, "code": code})
+    return out
+
+
+def _door_codes_payload():
+    db  = _load_customers()
+    out = []
+    for k, c in db.items():
+        if c.get("archived"):
+            continue
+        if c.get("customer_type", "individual") in _NON_SITE_TYPES:
+            continue
+        out.append({
+            "key":     k,
+            "label":   c.get("property_label") or k,
+            "name":    c.get("bill_to_name", "") or "",
+            "address": c.get("address", "") or "",
+            "codes":   _normalize_door_codes(c.get("door_codes")),
+        })
+    out.sort(key=lambda x: x["label"].lower())
+    return {
+        "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
+        "customers":    out,
+    }
+
+
+@app.route("/codes/")
+def door_codes_page():
+    # Flask redirects /codes -> /codes/ automatically for this rule
+    return render_template("door_codes.html", embedded=False, snapshot="null")
+
+
+@app.route("/codes/api")
+def api_door_codes():
+    return jsonify(_door_codes_payload())
+
+
+@app.route("/codes/manifest.json")
+def door_codes_manifest():
+    return send_from_directory(str(STATIC_DIR), "codes-manifest.json",
+                               mimetype="application/manifest+json")
+
+
+@app.route("/codes/sw.js")
+def door_codes_sw():
+    # Served from /codes/ so its default scope is /codes/
+    return send_from_directory(str(STATIC_DIR), "codes-sw.js",
+                               mimetype="application/javascript")
+
+
+@app.route("/codes/export")
+def door_codes_export():
+    """Self-contained snapshot: one HTML file that works with no server at all.
+
+    A photograph, not a feed — re-export after changing any code.
+    """
+    payload = _door_codes_payload()
+    html = render_template("door_codes.html", embedded=True,
+                           snapshot=json.dumps(payload, ensure_ascii=False))
+    stamp = datetime.date.today().isoformat()
+    resp  = make_response(html)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    resp.headers["Content-Disposition"] = f'attachment; filename="door-codes-{stamp}.html"'
+    return resp
+
+
 @app.route("/customers")
 def api_customers():
     with open(CUSTOMERS, encoding="utf-8-sig") as f:
@@ -537,6 +629,7 @@ def api_customer_create():
         "hourly_rate":    float(body.get("hourly_rate", 70.0)),
         "customer_type":  body.get("customer_type", "individual"),
         "aliases":        body.get("aliases", []),
+        "door_codes":     _normalize_door_codes(body.get("door_codes")),
         "archived":       False,
     }
     _save_customers(db)
@@ -559,6 +652,8 @@ def api_customer_update(key):
         cust["hourly_rate"] = float(body["hourly_rate"])
     if "aliases" in body:
         cust["aliases"] = body["aliases"]
+    if "door_codes" in body:
+        cust["door_codes"] = _normalize_door_codes(body["door_codes"])
     if "archived" in body:
         cust["archived"] = bool(body["archived"])
 

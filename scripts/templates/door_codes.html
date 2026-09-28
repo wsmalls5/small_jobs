@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f7a65">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Door Codes">
+<title>Door Codes</title>
+{% if not embedded %}
+<link rel="manifest" href="/codes/manifest.json">
+<link rel="apple-touch-icon" href="/static/codes-icon-192.png">
+{% endif %}
+<style>
+  /* High-contrast light theme on purpose - this gets read outdoors in daylight */
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:      #14202b;
+    --muted:    #61707d;
+    --line:     #dce3e8;
+    --bg:       #f4f6f7;
+    --card:     #ffffff;
+    --teal:     #2f7a65;
+    --teal-ink: #1d5a4a;
+  }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* -- Header ------------------------------------------------ */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--teal);
+    color: #fff;
+    padding: calc(env(safe-area-inset-top) + .7rem) 1rem .7rem;
+    box-shadow: 0 1px 4px rgba(0,0,0,.18);
+  }
+  .hrow { display: flex; align-items: center; gap: .6rem; }
+  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: .2px; flex: 1; }
+  #sync-btn {
+    appearance: none; -webkit-appearance: none;
+    border: 1px solid rgba(255,255,255,.55);
+    background: rgba(255,255,255,.12); color: #fff;
+    font-size: .82rem; font-weight: 600;
+    padding: .38rem .7rem; border-radius: 7px; cursor: pointer;
+  }
+  #sync-btn:active { background: rgba(255,255,255,.28); }
+  #sync-btn[disabled] { opacity: .55; }
+
+  #stamp {
+    display: block; margin-top: .45rem;
+    font-size: .78rem; font-weight: 600; letter-spacing: .1px;
+    color: rgba(255,255,255,.92);
+  }
+  #stamp.warn { color: #ffe0a3; }
+  #stamp.bad  { color: #ffc9c4; }
+
+  /* -- Search ------------------------------------------------ */
+  .searchwrap { padding: .7rem 1rem .2rem; }
+  #search {
+    width: 100%; font-size: 16px;   /* 16px stops iOS zoom-on-focus */
+    padding: .7rem .85rem; border: 1px solid var(--line);
+    border-radius: 9px; background: var(--card); color: var(--ink);
+  }
+  #search:focus { outline: 2px solid var(--teal); outline-offset: -1px; }
+
+  /* -- List -------------------------------------------------- */
+  main { padding: .5rem 1rem 1rem; }
+  .cust {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 11px; margin-bottom: .55rem; overflow: hidden;
+  }
+  .cust-btn {
+    display: flex; align-items: center; gap: .7rem; width: 100%;
+    text-align: left; background: none; border: 0;
+    padding: .85rem .9rem; font: inherit; color: inherit; cursor: pointer;
+  }
+  .cust-btn:active { background: #eef2f4; }
+  .cust-main { flex: 1; min-width: 0; }
+  .cust-label { display: block; font-weight: 650; font-size: 1rem; }
+  .cust-sub {
+    display: block; font-size: .8rem; color: var(--muted); margin-top: .12rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pill {
+    flex: none; min-width: 1.6rem; text-align: center;
+    font-size: .76rem; font-weight: 700;
+    padding: .18rem .45rem; border-radius: 20px;
+    background: #e4efeb; color: var(--teal-ink);
+  }
+  .pill.none { background: #eef1f3; color: var(--muted); font-weight: 600; }
+  .chev { flex: none; color: var(--muted); font-size: .7rem; }
+
+  .codes { display: none; border-top: 1px solid var(--line); padding: .3rem .9rem .75rem; }
+  .cust.open .codes { display: block; }
+  .cust.open .chev { transform: rotate(90deg); }
+
+  .code-row {
+    display: block; width: 100%; text-align: left;
+    background: none; border: 0; border-bottom: 1px solid #edf1f3;
+    padding: .7rem .1rem; font: inherit; color: inherit; cursor: pointer;
+  }
+  .code-row:last-child { border-bottom: 0; }
+  .code-row:active { background: #eef2f4; }
+  .code-label {
+    display: block;
+    font-size: .72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .6px; color: var(--muted);
+  }
+  .code-val {
+    display: block;
+    font: 700 1.75rem/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .09em; margin-top: .1rem; word-break: break-all;
+  }
+  .code-label.copied { color: var(--teal-ink); }
+  .nocode { font-size: .88rem; color: var(--muted); padding: .55rem .1rem; margin: 0; }
+  .empty { text-align: center; color: var(--muted); padding: 2.5rem 1rem; font-size: .92rem; }
+  footer {
+    text-align: center; color: var(--muted); font-size: .72rem;
+    padding: 0 1rem calc(env(safe-area-inset-bottom) + 1.5rem);
+    min-height: 1rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <h1>Door Codes</h1>
+    {% if not embedded %}<button id="sync-btn" type="button">Sync</button>{% endif %}
+  </div>
+  <span id="stamp">&nbsp;</span>
+</header>
+
+<div class="searchwrap">
+  <input id="search" type="search" placeholder="Search customer, address, code&hellip;"
+         autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+</div>
+
+<main id="list"></main>
+<footer id="note"></footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var EMBEDDED = {{ 'true' if embedded else 'false' }};
+  var SNAPSHOT = {{ snapshot | safe }};
+  var LS_KEY   = 'door_codes_cache_v1';
+
+  var listEl   = document.getElementById('list');
+  var stampEl  = document.getElementById('stamp');
+  var noteEl   = document.getElementById('note');
+  var searchEl = document.getElementById('search');
+  var syncBtn  = document.getElementById('sync-btn');
+
+  var state = { payload: null, fetchedAt: 0, open: {}, filter: '' };
+
+  var ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+  ESC_MAP["'"] = '&#39;';
+
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/[&<>"']/g, function (c) { return ESC_MAP[c]; });
+  }
+
+  // -- The copy that lives on this phone ---------------------
+  function loadCache() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return false;
+      var o = JSON.parse(raw);
+      if (!o || !o.payload) return false;
+      state.payload   = o.payload;
+      state.fetchedAt = o.fetchedAt || 0;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function saveCache() {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        payload: state.payload, fetchedAt: state.fetchedAt
+      }));
+    } catch (e) { /* private mode or full quota - screen still works this session */ }
+  }
+
+  // -- Sync stamp -------------------------------------------
+  function ago(ms) {
+    var s = Math.floor(ms / 1000);
+    if (s < 90) return 'just now';
+    var m = Math.round(s / 60);
+    if (m < 60) return m + (m === 1 ? ' minute ago' : ' minutes ago');
+    var h = Math.round(m / 60);
+    if (h < 24) return h + (h === 1 ? ' hour ago' : ' hours ago');
+    var d = Math.round(h / 24);
+    return d + (d === 1 ? ' day ago' : ' days ago');
+  }
+
+  function renderStamp() {
+    if (EMBEDDED) {
+      var when = ((SNAPSHOT && SNAPSHOT.generated_at) || '').slice(0, 10);
+      stampEl.className   = 'warn';
+      stampEl.textContent = '⚠ Offline snapshot' + (when ? ' from ' + when : '') +
+                            ' — will not update on its own';
+      return;
+    }
+    if (!state.fetchedAt) {
+      stampEl.className   = 'bad';
+      stampEl.textContent = '⚠ Never synced — open this once while the server is running';
+      return;
+    }
+    var age  = Date.now() - state.fetchedAt;
+    var days = age / 86400000;
+    var warn = days >= 7;
+    stampEl.className   = days >= 30 ? 'bad' : (warn ? 'warn' : '');
+    stampEl.textContent = (warn ? '⚠ ' : '') + 'Synced ' + ago(age);
+  }
+
+  // -- List -------------------------------------------------
+  function matches(c, f) {
+    if (!f) return true;
+    if ((c.label   || '').toLowerCase().indexOf(f) > -1) return true;
+    if ((c.name    || '').toLowerCase().indexOf(f) > -1) return true;
+    if ((c.address || '').toLowerCase().indexOf(f) > -1) return true;
+    return (c.codes || []).some(function (k) {
+      return (k.code  || '').toLowerCase().indexOf(f) > -1 ||
+             (k.label || '').toLowerCase().indexOf(f) > -1;
+    });
+  }
+
+  function render() {
+    var all = (state.payload && state.payload.customers) || [];
+    if (!all.length) {
+      listEl.innerHTML = '<p class="empty">No customers saved on this phone yet.<br>' +
+        'Open this page once while the Small Jobs server is running.</p>';
+      return;
+    }
+    var f    = state.filter.trim().toLowerCase();
+    var rows = all.filter(function (c) { return matches(c, f); });
+    if (!rows.length) {
+      listEl.innerHTML = '<p class="empty">Nothing matches &ldquo;' + esc(state.filter) + '&rdquo;.</p>';
+      return;
+    }
+
+    var html = '';
+    rows.forEach(function (c) {
+      var codes  = c.codes || [];
+      // While searching, auto-open anything that actually has codes
+      var isOpen = !!state.open[c.key] || (!!f && codes.length > 0);
+      var sub    = c.address || c.name || '';
+      html += '<div class="cust' + (isOpen ? ' open' : '') + '" data-key="' + esc(c.key) + '">' +
+                '<button class="cust-btn" type="button">' +
+                  '<span class="cust-main">' +
+                    '<span class="cust-label">' + esc(c.label) + '</span>' +
+                    (sub ? '<span class="cust-sub">' + esc(sub) + '</span>' : '') +
+                  '</span>' +
+                  (codes.length
+                     ? '<span class="pill">' + codes.length + '</span>'
+                     : '<span class="pill none">&mdash;</span>') +
+                  '<span class="chev">&#9654;</span>' +
+                '</button>' +
+                '<div class="codes">';
+      if (!codes.length) {
+        html += '<p class="nocode">No door code on file.</p>';
+      } else {
+        codes.forEach(function (k) {
+          html += '<button class="code-row" type="button" data-code="' + esc(k.code) + '">' +
+                    '<span class="code-label">' + esc(k.label || 'Door code') + '</span>' +
+                    '<span class="code-val">' + esc(k.code) + '</span>' +
+                  '</button>';
+        });
+      }
+      html += '</div></div>';
+    });
+    listEl.innerHTML = html;
+  }
+
+  // Expand / collapse a customer, or tap a code to copy it
+  listEl.addEventListener('click', function (e) {
+    var codeBtn = e.target.closest('.code-row');
+    if (codeBtn) { copyCode(codeBtn); return; }
+
+    var custBtn = e.target.closest('.cust-btn');
+    if (!custBtn) return;
+    var card = custBtn.closest('.cust');
+    state.open[card.getAttribute('data-key')] = card.classList.toggle('open');
+  });
+
+  function copyCode(btn) {
+    var code  = btn.getAttribute('data-code');
+    var label = btn.querySelector('.code-label');
+    var prev  = label.textContent;
+    function flash(msg) {
+      label.textContent = msg;
+      label.classList.add('copied');
+      setTimeout(function () {
+        label.textContent = prev;
+        label.classList.remove('copied');
+      }, 1200);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(
+        function () { flash('Copied'); },
+        function () { flash(prev); }
+      );
+      return;
+    }
+    // No async clipboard outside a secure context on older iOS Safari
+    var ta = document.createElement('textarea');
+    ta.value = code;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity  = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, code.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+    document.body.removeChild(ta);
+    flash(ok ? 'Copied' : prev);
+  }
+
+  searchEl.addEventListener('input', function () {
+    state.filter = searchEl.value;
+    render();
+  });
+
+  // -- Pull from the server ---------------------------------
+  var syncing = false;
+
+  function sync(manual) {
+    if (EMBEDDED || syncing) return;
+    syncing = true;
+    if (syncBtn) { syncBtn.disabled = true; syncBtn.textContent = 'Syncing'; }
+
+    var ctrl  = ('AbortController' in window) ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 6000);
+
+    function done() {
+      clearTimeout(timer);
+      syncing = false;
+      if (syncBtn) { syncBtn.disabled = false; syncBtn.textContent = 'Sync'; }
+    }
+
+    fetch('/codes/api', {
+      cache:  'no-store',
+      signal: ctrl ? ctrl.signal : undefined
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || !data.customers) throw new Error('bad payload');
+        state.payload   = data;
+        state.fetchedAt = Date.now();
+        saveCache();
+        render();
+        renderStamp();
+        noteEl.textContent = '';
+        done();
+      })
+      .catch(function () {
+        // Expected whenever the Mac is off - the saved copy stays on screen
+        renderStamp();
+        if (manual) {
+          noteEl.textContent = 'Could not reach the server. Showing the copy saved on this phone.';
+        }
+        done();
+      });
+  }
+
+  if (syncBtn) syncBtn.addEventListener('click', function () { sync(true); });
+
+  // -- Boot -------------------------------------------------
+  if (EMBEDDED) {
+    state.payload = SNAPSHOT;
+    render();
+    renderStamp();
+  } else {
+    loadCache();
+    render();
+    renderStamp();
+    sync(false);
+
+    // A home-screen PWA resumes instead of reloading, so re-check every time
+    // it comes back to the foreground - not just on cold start.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { renderStamp(); sync(false); }
+    });
+    window.addEventListener('online', function () { sync(false); });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/codes/sw.js', { scope: '/codes/' })
+          .catch(function () {
+            noteEl.textContent = 'Offline mode unavailable on this connection.';
+          });
+      });
+    } else if (!window.isSecureContext) {
+      noteEl.textContent = 'Offline mode needs the https:// Tailscale address.';
+    }
+  }
+})();
+</script>
+</body>
+</html>

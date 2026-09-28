@@ -97,6 +97,9 @@
                    color:#6c757d; border-bottom:2px solid #dee2e6; }
   .alias-row { display:flex; gap:.4rem; margin-bottom:.35rem; align-items:center; }
   .alias-row input { flex:1; }
+  .dc-row { display:flex; gap:.4rem; margin-bottom:.35rem; align-items:center; }
+  .dc-row .dc-label { flex:1 1 55%; }
+  .dc-row .dc-code  { flex:1 1 45%; font-family:monospace; font-weight:600; letter-spacing:.04em; }
 
   /* ── Customer type panels ── */
   .type-panel-card { border:1px solid #e5e7eb !important; border-radius:10px !important; overflow:hidden; }
@@ -136,6 +139,9 @@
   #inv-controls .btn        { font-size:.71rem !important; padding:.15rem .35rem !important; }
   #inv-controls .btn-group-sm>.btn { font-size:.71rem !important; padding:.15rem .35rem !important; }
   #inv-net-days-input       { font-size:.71rem; padding:.15rem .28rem; width:3.4rem; }
+  /* By Customer sub-tab: hide invoice controls, show search */
+  #tab-invoices.by-cust #inv-controls  { display:none !important; }
+  #tab-invoices:not(.by-cust) #hist-controls { display:none !important; }
 
   /* Invoice status: future buttons — outline style + muted hover instead of full fill */
   .btn-inv-future-secondary { color:#6c757d; border:1px solid #6c757d; }
@@ -203,6 +209,8 @@
         <input type="text" id="cust-search" class="form-control form-control-sm"
                style="max-width:240px" placeholder="Search customers…">
         <div class="ms-auto d-flex gap-2 align-items-center">
+          <a href="/codes/" target="_blank" class="btn btn-sm btn-success"
+             style="font-size:.75rem;padding:.2rem .55rem">Door Codes</a>
           <div class="btn-group btn-group-sm" role="group">
             <button type="button" class="btn btn-dark" id="view-by-type-btn">By Type</button>
             <button type="button" class="btn btn-outline-secondary" id="view-all-btn">All</button>
@@ -587,7 +595,7 @@
         <button class="btn btn-sm btn-success" id="inv-generate-btn">&#9889; Generate All Invoices &#9889;</button>
       </div>
       <!-- History search (hidden until History sub-tab active) -->
-      <div class="d-flex align-items-center py-2 ms-3" id="hist-controls" style="display:none">
+      <div class="d-flex align-items-center py-2 ms-3" id="hist-controls">
         <input type="text" id="hist-search" class="form-control form-control-sm"
                style="max-width:260px" placeholder="Search customer…">
       </div>
@@ -720,18 +728,15 @@
               <option value="personal">Personal</option>
             </select>
           </div>
-          <div class="col-12">
-            <div class="d-flex align-items-center gap-2" id="cust-alias-toggle"
-                 style="cursor:pointer;user-select:none;padding:.3rem 0">
-              <span class="fw-semibold">Aliases</span>
-              <span id="cust-alias-chevron" class="text-muted" style="font-size:.7rem">&#9654;</span>
+          <!-- Door codes — these are what the phone shows at /codes -->
+          <div class="col-12" id="cust-codes-section">
+            <hr class="my-2">
+            <div class="d-flex align-items-center gap-2 py-1">
+              <span class="fw-semibold small text-muted text-uppercase" style="letter-spacing:.4px">Door Codes</span>
+              <a href="/codes/" target="_blank" class="ms-auto btn btn-sm btn-outline-secondary"
+                 style="font-size:.72rem;padding:.15rem .45rem" title="Open the phone lookup">&rarr; Door Codes Applet</a>
             </div>
-            <div id="cust-alias-body" style="display:none">
-              <div id="alias-list"></div>
-              <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-alias-btn">
-                + Add alias
-              </button>
-            </div>
+            <div id="code-list"></div>
           </div>
           <!-- Invoice history (visible only for existing customers) -->
           <div class="col-12" id="cust-inv-section" style="display:none">
@@ -742,6 +747,21 @@
               <span id="cust-inv-chevron" class="text-muted" style="font-size:.7rem">&#9654;</span>
             </div>
             <div id="cust-inv-body" style="display:none"></div>
+          </div>
+          <!-- Aliases: collapsed, last — rarely touched after setup -->
+          <div class="col-12">
+            <hr class="my-2">
+            <div class="d-flex align-items-center gap-2 py-1" id="cust-alias-toggle"
+                 style="cursor:pointer;user-select:none">
+              <span class="fw-semibold small text-muted text-uppercase" style="letter-spacing:.4px">Aliases</span>
+              <span id="cust-alias-chevron" class="text-muted" style="font-size:.7rem">&#9654;</span>
+            </div>
+            <div id="cust-alias-body" style="display:none">
+              <div id="alias-list"></div>
+              <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-alias-btn">
+                + Add alias
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1161,6 +1181,8 @@ async function loadAllCustomers() {
 // ═══════════════════════════════════════════════════════════════
 
 const _custFieldIds = ['cm-label','cm-billto','cm-address','cm-phone','cm-email','cm-rate'];
+let _codesReadonly   = true;   // door-code rows follow the modal's edit state
+let _custCodesAtOpen = '[]';   // fingerprint, to spot a code change on save
 
 function setCustModalReadonly(readonly) {
   _custFieldIds.forEach(id => {
@@ -1173,6 +1195,9 @@ function setCustModalReadonly(readonly) {
   typeEl.classList.toggle('bg-light', readonly);
   document.getElementById('add-alias-btn').style.display = readonly ? 'none' : '';
   document.querySelectorAll('#alias-list .remove-alias-btn').forEach(b => b.style.display = readonly ? 'none' : '');
+  _codesReadonly = readonly;
+  if (readonly) pruneCodeRows(); else ensureTrailingCodeRow();
+  applyCodeRowMode(readonly);
   document.getElementById('cust-save-btn').style.display = readonly ? 'none' : '';
   document.getElementById('cust-edit-toggle-btn').style.display = readonly ? '' : 'none';
 }
@@ -1189,6 +1214,10 @@ function _openExistingCustModal(key, c) {
   document.getElementById('cm-type').value         = c.customer_type   || 'individual';
   aliasList.innerHTML = '';
   (c.aliases || []).forEach(a => addAliasRow(a));
+  codeList.innerHTML  = '';
+  _codesReadonly      = false;   // so the blank-row logic behaves while filling
+  (c.door_codes || []).forEach(dc => addCodeRow(dc.label || '', dc.code || ''));
+  _custCodesAtOpen    = codesFingerprint(c.door_codes);
   document.getElementById('cust-del-btn').style.display     = '';
   document.getElementById('cust-msg-btn').style.display     = c.email ? '' : 'none';
   const archBtn = document.getElementById('cust-archive-btn');
@@ -1280,6 +1309,7 @@ const custModal     = new bootstrap.Modal(document.getElementById('custModal'));
 const custSaveBtn   = document.getElementById('cust-save-btn');
 const addAliasBtn   = document.getElementById('add-alias-btn');
 const aliasList     = document.getElementById('alias-list');
+const codeList      = document.getElementById('code-list');
 const viewByTypeBtn = document.getElementById('view-by-type-btn');
 const viewAllBtn    = document.getElementById('view-all-btn');
 const custTypeView  = document.getElementById('cust-type-view');
@@ -1463,6 +1493,8 @@ addCustBtn.addEventListener('click', () => {
   document.getElementById('cm-rate').value         = '70';
   document.getElementById('cm-type').value         = 'individual';
   aliasList.innerHTML = '';
+  codeList.innerHTML  = '';
+  _custCodesAtOpen    = '[]';
   document.getElementById('cust-del-btn').style.display     = 'none';
   document.getElementById('cust-msg-btn').style.display     = 'none';
   document.getElementById('cust-archive-btn').style.display = 'none';
@@ -1486,12 +1518,93 @@ function addAliasRow(value = '') {
 
 addAliasBtn.addEventListener('click', () => addAliasRow());
 
+// -- Door codes -------------------------------------------------------------
+// In edit mode there is always exactly one blank row at the bottom: filling it
+// grows another. Leaving edit mode drops the blanks, except that a customer
+// with no codes keeps one blank row so it still reads as "none yet, add here".
+
+function addCodeRow(label = '', code = '') {
+  const div = document.createElement('div');
+  div.className = 'dc-row';
+  div.innerHTML = `
+    <input type="text" class="form-control form-control-sm dc-label"
+           placeholder="Label (e.g. Front door)" value="${escHtml(label)}">
+    <input type="text" class="form-control form-control-sm dc-code"
+           placeholder="Code" value="${escHtml(code)}">
+    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 remove-code-btn"
+            style="line-height:1.4" title="Remove">&times;</button>`;
+  div.querySelector('.remove-code-btn').addEventListener('click', () => {
+    div.remove();
+    ensureTrailingCodeRow();
+    applyCodeRowMode(_codesReadonly);
+  });
+  div.querySelectorAll('input').forEach(inp =>
+    inp.addEventListener('input', () => ensureTrailingCodeRow()));
+  codeList.appendChild(div);
+  return div;
+}
+
+function dcRowFilled(row) {
+  return Array.from(row.querySelectorAll('input')).some(i => i.value.trim() !== '');
+}
+
+function ensureTrailingCodeRow() {
+  if (_codesReadonly) return;
+  const rows = Array.from(codeList.querySelectorAll('.dc-row'));
+  if (!rows.length) { addCodeRow(); applyCodeRowMode(false); return; }
+  if (dcRowFilled(rows[rows.length - 1])) { addCodeRow(); applyCodeRowMode(false); }
+}
+
+function pruneCodeRows() {
+  codeList.querySelectorAll('.dc-row').forEach(r => { if (!dcRowFilled(r)) r.remove(); });
+  if (!codeList.querySelector('.dc-row')) addCodeRow();
+}
+
+function applyCodeRowMode(readonly) {
+  codeList.querySelectorAll('.dc-row').forEach(r => {
+    const lbl   = r.querySelector('.dc-label');
+    const cd    = r.querySelector('.dc-code');
+    const blank = !dcRowFilled(r);
+    [lbl, cd].forEach(i => {
+      i.readOnly = readonly;
+      i.classList.toggle('bg-light', readonly);
+    });
+    lbl.placeholder = readonly ? '' : 'Label (e.g. Front door)';
+    cd.placeholder  = readonly ? (blank ? 'No door code on file' : '') : 'Code';
+    r.querySelector('.remove-code-btn').style.display = readonly ? 'none' : '';
+  });
+}
+
+function collectDoorCodes() {
+  return Array.from(codeList.querySelectorAll('.dc-row'))
+    .map(r => ({
+      label: r.querySelector('.dc-label').value.trim(),
+      code:  r.querySelector('.dc-code').value.trim(),
+    }))
+    .filter(dc => dc.code);
+}
+
+function codesFingerprint(list) {
+  return JSON.stringify((list || [])
+    .map(dc => [(dc.label || '').trim(), (dc.code || '').trim()])
+    .filter(pair => pair[1]));
+}
+
 custSaveBtn.addEventListener('click', async () => {
   const key   = document.getElementById('cust-edit-key').value.trim();
   const label = document.getElementById('cm-label').value.trim();
   if (!label) { showToast('Property label is required', 'danger'); return; }
   const aliases = Array.from(aliasList.querySelectorAll('.alias-input'))
     .map(i => i.value.trim()).filter(Boolean);
+  // A label with no code is a half-finished row - flag it instead of dropping it
+  const stray = Array.from(codeList.querySelectorAll('.dc-row')).find(r =>
+    r.querySelector('.dc-label').value.trim() && !r.querySelector('.dc-code').value.trim());
+  if (stray) {
+    showToast(`Enter the code for "${stray.querySelector('.dc-label').value.trim()}" or clear its label`, 'danger');
+    stray.querySelector('.dc-code').focus();
+    return;
+  }
+  const door_codes = collectDoorCodes();
   const body = {
     property_label: label,
     bill_to_name:   document.getElementById('cm-billto').value.trim(),
@@ -1501,16 +1614,25 @@ custSaveBtn.addEventListener('click', async () => {
     hourly_rate:    parseFloat(document.getElementById('cm-rate').value) || 70,
     customer_type:  document.getElementById('cm-type').value,
     aliases,
+    door_codes,
   };
   const url    = key ? `/customers/${encodeURIComponent(key)}` : '/customers';
   const method = key ? 'PUT' : 'POST';
   const res  = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
   const d    = await res.json();
   if (d.ok) {
-    custModal.hide();
-    showToast(key ? 'Customer updated' : 'Customer added', 'success');
+    const savedKey = key || d.key;
+    const codesChanged = codesFingerprint(door_codes) !== _custCodesAtOpen;
+    showToast(
+      codesChanged
+        ? 'Saved. Open Door Codes on the phone while the server is running to sync it'
+        : (key ? 'Customer updated' : 'Customer added'),
+      'success');
     await loadAllCustomers();
     loadCustomerTab();
+    // Stay in the modal — re-open in read-only with fresh data
+    const refreshed = await fetch(`/customers/${encodeURIComponent(savedKey)}`).then(r => r.json());
+    _openExistingCustModal(savedKey, refreshed);
   } else {
     showToast(d.error || 'Save failed', 'danger');
   }
@@ -4530,8 +4652,7 @@ document.getElementById('hist-search').addEventListener('input', () => {
 document.getElementById('inv-sub-invoices-btn').addEventListener('click', () => {
   document.getElementById('inv-sub-invoices-btn').classList.add('active');
   document.getElementById('inv-sub-history-btn').classList.remove('active');
-  document.getElementById('inv-controls').style.display = '';
-  document.getElementById('hist-controls').style.display = 'none';
+  document.getElementById('tab-invoices').classList.remove('by-cust');
   document.getElementById('inv-sub-invoices-content').style.display = '';
   document.getElementById('hist-content').style.display = 'none';
 });
@@ -4539,8 +4660,7 @@ document.getElementById('inv-sub-invoices-btn').addEventListener('click', () => 
 document.getElementById('inv-sub-history-btn').addEventListener('click', () => {
   document.getElementById('inv-sub-history-btn').classList.add('active');
   document.getElementById('inv-sub-invoices-btn').classList.remove('active');
-  document.getElementById('inv-controls').style.display = 'none';
-  document.getElementById('hist-controls').style.display = '';
+  document.getElementById('tab-invoices').classList.add('by-cust');
   document.getElementById('inv-sub-invoices-content').style.display = 'none';
   document.getElementById('hist-content').style.display = '';
   loadHistoryView();
