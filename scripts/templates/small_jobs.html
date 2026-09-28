@@ -4540,7 +4540,7 @@ document.getElementById('inv-sub-history-btn').addEventListener('click', () => {
   document.getElementById('inv-sub-history-btn').classList.add('active');
   document.getElementById('inv-sub-invoices-btn').classList.remove('active');
   document.getElementById('inv-controls').style.display = 'none';
-  document.getElementById('hist-controls').style.removeProperty('display');
+  document.getElementById('hist-controls').style.display = '';
   document.getElementById('inv-sub-invoices-content').style.display = 'none';
   document.getElementById('hist-content').style.display = '';
   loadHistoryView();
