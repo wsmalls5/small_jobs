@@ -929,6 +929,25 @@
   </div>
 </div>
 
+<!-- Invoice internal notes modal (never printed or emailed) -->
+<div class="modal fade" id="invNotesModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title" style="font-size:1rem">Notes <span class="text-muted fw-normal" id="inv-notes-title" style="font-size:.8rem"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <textarea class="form-control" id="inv-notes-text" rows="8" placeholder="Internal notes — not shown on the invoice"></textarea>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="inv-notes-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Invoice generate month-picker modal -->
 <div class="modal fade" id="invGenerateModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
@@ -3793,7 +3812,10 @@ function invIsOverdue(inv) {
   return (Date.now() - new Date(inv.sent_at).getTime()) > (invNetDays || 20) * 86400000;
 }
 
+const _invNotesLookup = {};   // "period/invoice_id" → invoice, for the notes modal
+
 function renderInvList(container, period, invs) {
+  invs.forEach(i => { _invNotesLookup[`${period}/${i.invoice_id}`] = i; });
   if (!invs.length) {
     container.innerHTML = `<p class="text-muted small py-3">No invoices for this period.
       Click <strong>Generate Invoices</strong> to create them.</p>`;
@@ -3894,12 +3916,15 @@ function renderInvList(container, period, invs) {
         inv.stale ? `<span class="badge ms-1 stale-badge" style="background:#f97316;color:#fff;font-size:.58rem;cursor:default" data-period="${escHtml(period)}" data-id="${escHtml(inv.invoice_id)}">&#9888; Changed</span>` : '',
         inv.corrects ? '<span class="badge ms-1" style="font-size:.58rem;background:#7c3aed">Corrected</span>' : '',
       ].filter(Boolean).join('');
-      return `<tr style="${rowBg};cursor:pointer" data-search="${escHtml(inv.bill_to_name.toLowerCase())}" onclick="if(!event.target.closest('button,a')){window.open('/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print','_blank')}">
+      return `<tr style="${rowBg};cursor:pointer" data-search="${escHtml(inv.bill_to_name.toLowerCase())}" onclick="if(!event.target.closest('button,a,.inv-note-cell')){window.open('/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print','_blank')}">
         <td class="small fw-semibold" style="white-space:nowrap">${escHtml(inv.invoice_id)}</td>
         <td class="small fw-semibold">${escHtml(inv.bill_to_name)}</td>
         <td class="small text-muted">${escHtml(inv.property_label || '')}</td>
         <td class="small fw-bold text-success" style="white-space:nowrap">$${inv.total.toFixed(2)}</td>
         <td><div class="btn-group btn-group-sm">${statusBtns}</div></td>
+        <td class="small inv-note-cell" style="white-space:nowrap;cursor:text;min-width:6rem"
+            title="Click to view / edit notes"
+            onclick="openInvNotes('${escHtml(period)}','${escHtml(inv.invoice_id)}')">${inv.internal_notes ? escHtml(inv.internal_notes) : '<span class="text-muted">—</span>'}</td>
         <td style="text-align:center">
           <button class="btn btn-sm review-toggle-btn" title="${inv.review_flagged ? 'Clear review flag' : 'Flag for review'}"
             onclick="toggleInvReview('${escHtml(period)}','${escHtml(inv.invoice_id)}',this)"
@@ -3921,6 +3946,7 @@ function renderInvList(container, period, invs) {
             <th>Property</th>
             <th>Amount</th>
             <th style="min-width:180px">Status</th>
+            <th>Notes</th>
             <th style="text-align:center">Review</th>
             <th>Sent Date</th>
             <th>Due Date</th>
@@ -3977,7 +4003,7 @@ function renderInvList(container, period, invs) {
 
     html += `
     <div class="col-12 col-md-6 col-xl-4" id="inv-card-${escHtml(inv.invoice_id)}" data-search="${escHtml(inv.bill_to_name.toLowerCase())}">
-      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#dc3545' : inv.review_flagged ? 'border:2px solid #eab308' : inv.stale ? 'border:2px solid #f97316' : ''};cursor:pointer" onclick="if(!event.target.closest('button,a,.inv-hist-toggle,.stale-badge')){window.open('/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print','_blank')}">
+      <div class="card shadow-sm h-100" style="${overdue ? 'border-color:#dc3545' : inv.review_flagged ? 'border:2px solid #eab308' : inv.stale ? 'border:2px solid #f97316' : ''};cursor:pointer" onclick="if(!event.target.closest('button,a,.inv-hist-toggle,.stale-badge,.inv-note-box')){window.open('/invoices/${escHtml(period)}/${escHtml(inv.invoice_id)}/print','_blank')}">
         <div class="card-body pb-2">
           <div class="d-flex justify-content-between align-items-start mb-1">
             <div>
@@ -4008,6 +4034,13 @@ function renderInvList(container, period, invs) {
             ${inv.reminded_at ? `<div><span class="badge me-1" style="background:#f97316;font-size:.55rem;vertical-align:middle">Reminded</span>${fmtInvDate(inv.reminded_at)}</div>` : ''}
           </div>
           <div id="${historyId}" style="display:none"></div>
+        </div>
+        <div class="inv-note-box border-top px-3 py-2" style="font-size:.78rem;cursor:text"
+             title="Click to add / edit notes"
+             onclick="openInvNotes('${escHtml(period)}','${escHtml(inv.invoice_id)}')">
+          <strong>Notes:</strong> ${inv.internal_notes
+            ? `<span style="white-space:pre-wrap;word-break:break-word">${escHtml(inv.internal_notes)}</span>`
+            : '<span class="text-muted">—</span>'}
         </div>
         <div class="card-footer bg-transparent py-1 inv-card-footer">
           <div class="d-flex gap-1 justify-content-between align-items-center flex-wrap">
@@ -4202,6 +4235,40 @@ async function toggleInvReview(period, invoiceId, btn) {
     }
   } catch(e) { showToast('Error: ' + e, 'danger'); }
 }
+
+// ── Internal invoice notes ─────────────────────────────────────
+let _notesCtx = {};
+
+function openInvNotes(period, invoiceId) {
+  const inv = _invNotesLookup[`${period}/${invoiceId}`] || {};
+  _notesCtx = { period, invoiceId };
+  document.getElementById('inv-notes-title').textContent = `${inv.bill_to_name || ''} · ${invoiceId}`;
+  const ta = document.getElementById('inv-notes-text');
+  ta.value = inv.internal_notes || '';
+  const el = document.getElementById('invNotesModal');
+  el.addEventListener('shown.bs.modal', () => ta.focus(), { once: true });
+  bootstrap.Modal.getOrCreateInstance(el).show();
+}
+
+document.getElementById('inv-notes-save-btn').addEventListener('click', async () => {
+  const { period, invoiceId } = _notesCtx;
+  const btn = document.getElementById('inv-notes-save-btn');
+  btn.disabled = true;
+  try {
+    const res  = await fetch(`/invoices/${period}/${invoiceId}/internal-notes`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({internal_notes: document.getElementById('inv-notes-text').value}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('invNotesModal')).hide();
+      await loadInvPeriod(period);
+    } else {
+      showToast(data.error || 'Error', 'danger');
+    }
+  } catch(e) { showToast('Error: ' + e, 'danger'); }
+  btn.disabled = false;
+});
 
 async function regenInvoice(period, invoiceId, customerKey) {
   const confirmed = confirm(

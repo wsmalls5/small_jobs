@@ -1312,8 +1312,25 @@ def _save_invoice_meta(meta):
     tmp.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
     os.replace(str(tmp), str(INVOICES / "meta.json"))
 
+# Invoice numbering
+#   Periods in 2026 and earlier: YYYYMM + 3-digit counter that never reset  (e.g. 202608155)
+#   Periods in 2027 onward:      YYYYMMDD + 3-digit counter that restarts at 001 each Jan 1,
+#                     + a revision letter (A, B, C...)            (e.g. 20270131001A)
+# A corrected re-issue of a sent/paid invoice keeps the number and bumps the letter.
+_NEW_ID_FIRST_YEAR = 2027
+_REV_ID_RE = re.compile(r"^(\d{11})([A-Z])$")
+
 def _next_invoice_id(year, month):
     meta = _invoice_meta()
+    if year >= _NEW_ID_FIRST_YEAR:
+        # Keyed to the billing period (not today), so December work generated in
+        # January still gets the old year's scheme. Day = last day of the period month.
+        day      = calendar.monthrange(year, month)[1]
+        counters = meta.setdefault("yearly_counters", {})
+        n = counters.get(str(year), 0) + 1
+        counters[str(year)] = n
+        _save_invoice_meta(meta)
+        return f"{year}{month:02d}{day:02d}{n:03d}A"
     key = f"{year}_{month:02d}"
     counters = meta.setdefault("monthly_counters", {})
     if key not in counters:
@@ -1321,6 +1338,19 @@ def _next_invoice_id(year, month):
     counters[key] += 1
     _save_invoice_meta(meta)
     return f"{year}{month:02d}{counters[key]:03d}"
+
+def _next_revision_id(old_id, existing):
+    """Same invoice number, next revision letter. None if old_id has no letter
+    (legacy numbering) or the letters are exhausted."""
+    m = _REV_ID_RE.match(old_id or "")
+    if not m:
+        return None
+    taken = {i["invoice_id"] for i in existing}
+    for code in range(ord(m.group(2)) + 1, ord("Z") + 1):
+        cand = m.group(1) + chr(code)
+        if cand not in taken:
+            return cand
+    return None
 
 def _load_invoices(period):
     fp = INVOICES / f"invoices_{period}.json"
@@ -1745,12 +1775,14 @@ def generate_invoices(period):
             else:
                 # Sent/paid — supersede and create corrected draft
                 old["superseded"] = True
-                corrected_id = _next_invoice_id(year, month)
+                corrected_id = (_next_revision_id(old["invoice_id"], existing)
+                                or _next_invoice_id(year, month))
                 new_inv = _build_invoice(corrected_id, ck, cust, period, invoice_date,
                                          month_name, labor_entries, material_entries,
                                          labor_subtotal, materials_subtotal, invoice_subtotal,
                                          now, corrects=old["invoice_id"],
                                          net_days=net_days, due_date=due_date)
+                new_inv["internal_notes"] = old.get("internal_notes", "")
                 existing.append(new_inv)
                 generated.append(corrected_id)
         else:
@@ -1803,6 +1835,7 @@ def _build_invoice(inv_id, ck, cust, period, invoice_date, month_name,
         "deposit":             0.0,
         "total":               invoice_subtotal,
         "notes":               "",
+        "internal_notes":      "",
         "stale":               False,
         "generated_at":        now,
     }
@@ -2218,6 +2251,19 @@ def toggle_invoice_review(period, invoice_id):
     inv["review_flagged"] = bool(body.get("review_flagged", not inv.get("review_flagged", False)))
     _save_invoices(period, invs)
     return jsonify({"ok": True, "review_flagged": inv["review_flagged"]})
+
+
+@app.route("/invoices/<period>/<invoice_id>/internal-notes", methods=["PUT"])
+def set_invoice_internal_notes(period, invoice_id):
+    """Private bookkeeping notes — never rendered on the printed/emailed invoice."""
+    body = request.get_json() or {}
+    invs = _load_invoices(period)
+    inv  = next((i for i in invs if i["invoice_id"] == invoice_id), None)
+    if not inv:
+        return jsonify({"error": "not found"}), 404
+    inv["internal_notes"] = str(body.get("internal_notes") or "").strip()
+    _save_invoices(period, invs)
+    return jsonify({"ok": True, "internal_notes": inv["internal_notes"]})
 
 
 @app.route("/invoices/<period>/<invoice_id>", methods=["DELETE"])
